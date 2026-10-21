@@ -1,0 +1,18 @@
+{
+  "name": "MotorWorks Racing",
+  "short_name": "MW Racing",
+  "description": "Design engines and cars, then drive them on real circuits: the Nürburgring Nordschleife, Spa, Suzuka, Barcelona, the Red Bull Ring and A1 Motor Park. / Проектирайте двигатели и коли и ги карайте на истински писти.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#101412",
+  "theme_color": "#18201b",
+  "categories": ["games", "racing", "simulation"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
