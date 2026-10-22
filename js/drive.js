@@ -4,6 +4,7 @@ import { Track } from './track.js';
 import { World } from './scene.js';
 import { buildCar, disposeCar } from './carmodel.js';
 import { buildSpec, CarSim, DT } from './physics.js';
+import { LAYOUTS } from './parts.js';
 import { AutoPilot } from './ai.js';
 import { CarAudio, audioCtx, previewTone } from './audio.js';
 import { tx, fmtTime } from './i18n.js';
@@ -88,7 +89,8 @@ export class DriveSession {
     const o = this.o;
     this.spec = buildSpec(o.car, o.engine);
     this.sim = new CarSim(this.spec);
-    this.model = buildCar(o.car, { number: o.number || 7 });
+    const lay = LAYOUTS[o.engine?.layout] || {};
+    this.model = buildCar(o.car, { number: o.number || 7, cyl: lay.cyl, ev: lay.ev });
     this.model.group.traverse(m => { if (m.isMesh) m.castShadow = true });
     this.scene.add(this.model.group);
     this.ap = null; this.autopilot = o.mode === 'autopilot';

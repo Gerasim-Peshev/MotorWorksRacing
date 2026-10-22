@@ -7,7 +7,7 @@ import { buildCar, disposeCar } from './carmodel.js';
 import { Store } from './store.js';
 import { Input, MenuNav, ACTIONS, DEFAULT_BIND } from './input.js';
 import { DriveSession } from './drive.js';
-import { audioCtx, setVolume } from './audio.js';
+import { audioCtx, setVolume, engineDemo, stopEngineDemo, engineDemoPlaying } from './audio.js';
 import { tx, LANG, setLang, dec, fn, fmtTime, FLAG_US, FLAG_BG } from './i18n.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -148,7 +148,7 @@ export class App {
       const parts = s.ev ? [tx('Battery-electric')] : [tx(FUELS[e.fuel].n), s.rot ? tx('Rotary') : tx(VALVES[e.valve].n), tx(INJ[e.inj].n), e.turbos ? tx('{n}× turbo @ {b} bar', { n: e.turbos, b: dec(e.boost, 1) }) : '', e.sc && e.sc !== 'none' ? tx('{size} supercharger', { size: [SCS[e.sc].n] }) : '', tx(EMATS[e.mat].n)].filter(Boolean);
       return `<article class="card"><div class="spread"><div><small>${tx(L.n)} · ${e.year}</small><h3>${esc(e.name)}</h3></div>${used ? `<span class="tag">${tx('{n} cars', { n: used })}</span>` : ''}</div>
         <div class="dl"><div><small>${tx('Power')}</small><b>${tx('{v} hp', { v: fn(s.hp) })}</b></div><div><small>${tx('Torque')}</small><b>${tx('{v} Nm', { v: fn(s.tq) })}</b></div><div><small>${s.ev ? tx('Motor') : tx('Displacement')}</small><b>${s.ev ? tx('Electric') : dec(s.L, 1) + ' ' + tx('L')}</b></div><div><small>${tx('Redline')}</small><b>${tx('{v} rpm', { v: fn(s.rpm) })}</b></div><div><small>${tx('Weight')}</small><b>${tx('{v} kg', { v: s.w })}</b></div></div>
-        <small class="muted">${parts.join(' · ')}</small><div class="row"><button class="btn" data-a="editEngine:${e.id}">${tx('Edit')}</button><button class="btn ghost" data-a="dupEngine:${e.id}">${tx('Copy')}</button><button class="btn ghost" data-a="delEngine:${e.id}" aria-label="${tx('Delete')}">✕</button></div></article>` };
+        <small class="muted">${parts.join(' · ')}</small><div class="row"><button class="btn" data-a="editEngine:${e.id}">${tx('Edit')}</button><button class="btn ghost" data-a="listenEngine:${e.id}" aria-label="${tx('Listen')}">▶ ${tx('Listen')}</button><button class="btn ghost" data-a="dupEngine:${e.id}">${tx('Copy')}</button><button class="btn ghost" data-a="delEngine:${e.id}" aria-label="${tx('Delete')}">✕</button></div></article>` };
     return `<div class="sect-h"><div><small>${tx('{n} engines', { n: es.length })}</small><h2>${tx('Engines')}</h2></div><button class="btn primary" data-a="newEngine">${tx('Design engine')}</button></div>${es.length ? `<div class="grid">${es.map(card).join('')}</div>` : `<div class="card empty"><h3>${tx('No engines yet')}</h3><p class="muted">${tx('Start with an engine: pick its layout, size and technology. Then build a car around it.')}</p><div class="row"><button class="btn primary" data-a="newEngine">${tx('Design engine')}</button></div></div>`}`;
   }
   viewTracks() {
@@ -245,7 +245,7 @@ export class App {
   }
   engStatsHTML() {
     const d = this.draft, s = engStats(d);
-    return `${engineDiagram(d)}${curveSVG(d)}
+    return `${engineDiagram(d)}<div class="row listen-row"><button class="btn" data-a="listenEngine">▶ ${tx('Listen')}</button><small class="muted">${tx('Idle, two blips and a full-throttle pull to the limiter')}</small></div>${curveSVG(d)}
       <div class="dl"><div><small>${tx('Power')}</small><b>${tx('{v} hp', { v: fn(s.hp) })}</b></div><div><small>${tx('Torque')}</small><b>${tx('{v} Nm', { v: fn(s.tq) })}</b></div><div><small>${s.ev ? tx('Type') : tx('Displacement')}</small><b>${s.ev ? tx('Electric') : dec(s.L, 2) + ' ' + tx('L')}</b></div><div><small>${tx('Redline')}</small><b>${tx('{v} rpm', { v: fn(s.rpm) })}</b></div><div><small>${tx('Weight')}</small><b>${tx('{v} kg', { v: s.w })}</b></div><div><small>${tx('Reliability')}</small><b>${s.rel}</b></div></div>
       ${s.ev ? '' : `<div class="stat"><span>${tx('hp per litre')}</span><div class="meter"><i style="width:${clamp(s.hp / s.L / 2, 0, 100)}%"></i></div><span>${Math.round(s.hp / s.L)}</span></div>`}
       ${d.turbos ? `<small class="muted">${tx('Turbo lag grows with boost and the number of turbos.')}</small>` : ''}`;
@@ -346,7 +346,7 @@ export class App {
     if (f && keep) { const n = el.querySelector(`[data-a="${CSS.escape(f)}"]`) || el.querySelector('#' + CSS.escape(f)); if (n) n.focus({ preventScroll: true }) }
     if (this.sheet === 'car') { this.startPreview(); this.schedulePerf() } else this.stopPreview();
   }
-  closeSheet() { this.sheet = null; this.draft = null; this.renderSheet() }
+  closeSheet() { stopEngineDemo(); this.sheet = null; this.draft = null; this.renderSheet() }
   updateSheetStats() { if (this.sheet === 'engine') $('#estats').innerHTML = this.engStatsHTML(); else if (this.sheet === 'car') { this.refreshPreview(); this.schedulePerf() } }
   /* ---------- 3D preview ---------- */
   startPreview() {
@@ -372,10 +372,11 @@ export class App {
     if (!this.pvLoop) { const loop = () => { if (!this.pv || !this.sheet || this.sheet !== 'car') { this.pvLoop = null; return } this.pvLoop = requestAnimationFrame(loop); this.drawPreview() }; this.pvLoop = requestAnimationFrame(loop) }
   }
   refreshPreview(force) {
-    if (!this.pv) return; const d = this.draft, key = d.body + d.color;
-    if (!force && key === this.pv.key) return; this.pv.key = key;
+    if (!this.pv) return; const d = this.draft, e = this.store.engine(d.eng), lay = e ? LAYOUTS[e.layout] : null, key = [d.body, d.year, d.hl, d.int, d.brake, d.eng].join('|');
+    if (!force && key === this.pv.key) { if (this.pv.model && d.color !== this.pv.color) { this.pv.color = d.color; this.pv.model.group.userData.bodyMat.color.set(d.color) } return }
+    this.pv.key = key; this.pv.color = d.color;
     if (this.pv.model) { this.pv.scene.remove(this.pv.model.group); disposeCar(this.pv.model) }
-    this.pv.model = buildCar(d, {}); this.pv.scene.add(this.pv.model.group);
+    this.pv.model = buildCar(d, { cyl: lay?.cyl, ev: lay?.ev }); this.pv.scene.add(this.pv.model.group);
     const L = this.pv.model.dims.length; this.pv.dist = Math.max(6, L * 1.75);
   }
   drawPreview() {
@@ -434,6 +435,12 @@ export class App {
       case 'dupEngine': { const e = this.store.engine(x); this.store.putEngine({ ...e, id: this.store.id('e'), name: e.name + ' ' + tx('copy'), src: null }); this.renderView(); break }
       case 'delEngine': if (!this.store.delEngine(x)) this.toast(tx('This engine is fitted to a car. Change or delete those cars first.')); this.renderView(); break;
       case 'closeSheet': this.closeSheet(); break;
+      case 'listenEngine': {
+        if (engineDemoPlaying()) { stopEngineDemo(); break }
+        const e = x ? this.store.engine(x) : this.draft; if (!e) break;
+        const st = engStats(e), L = LAYOUTS[e.layout] || {};
+        engineDemo(e, st.rpm, L.ev ? 0 : e.fuel === 'diesel' ? 800 : L.rot ? 1000 : e.layout === 'v8' ? 700 : 880); break;
+      }
       case 'eo': d[x] = y; if (x === 'fuel' && y === 'diesel') { d.bore = Math.max(d.bore, 80); d.stroke = Math.max(d.stroke, 86) } this.fixEngine(); this.renderSheet(true); break;
       case 'saveEngine': { const e = { ...d, id: d.id || this.store.id('e') }; this.store.putEngine(e); this.closeSheet(); this.tab = this.store.cars.length ? 'eng' : 'garage'; this.renderNav(); this.renderView(); this.toast(tx('{name} is ready: {hp}.', { name: e.name, hp: tx('{v} hp', { v: fn(engStats(e).hp) }) })); break }
       case 'co': d[x] = y; this.fixCar(); this.renderSheet(true); break;

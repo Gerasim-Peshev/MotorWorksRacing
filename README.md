@@ -71,7 +71,8 @@ The garage starts empty: design an engine, build a car around it, then pick a ci
 - **Chassis**: body size, weight and weight distribution come from the tycoon's body shapes; the suspension sets roll stiffness and grip; FWD, RWD, AWD and the limited-slip diff change how power reaches the road.
 - **New parts for driving**: tyres (eco to racing slicks) and brakes (drums to carbon-ceramics).
 - **ABS and stability control** only work if the car has them fitted. Self-driving L3 unlocks the autopilot.
-- The 3D bodies are lofted from the tycoon's side-profile drawings, which are painted onto the sides.
+- **3D cars**: each body is lofted from the tycoon's side profile through real cross-sections: tumblehome, rounded shoulders, crowned hood and roof, rounded corners in plan view, and wheel arches with dark wells. On top of that come flush glass with pillars, clear-coated paint (metallic on newer cars), lamps, grilles, plates and trim that follow the body surface, mirrors, door seams and handles, exhausts, and lathed tyres on alloy or steel rims with brake discs and calipers. Calipers are red on sporty cars and gold with carbon-ceramics. The model year sets the style: older cars get chrome bumpers and round lamps, newer ones get swept lamps with LED strips.
+- **Engine sound**: a physical model runs in an AudioWorklet. Every cylinder fires an exhaust pulse at its real crank angle in the firing order, into its own exhaust bank. The pulses pass through the headers, tailpipes and a muffler. That is why a cross-plane V8 burbles (each bank fires unevenly), a flat-4 rumbles (unequal-length headers), an inline-5 warbles, a V12 screams, a rotary braps and a diesel clatters. V and W engines get a tailpipe on each side, in stereo. The model also covers turbo muffling, overrun pops, ignition cuts on hard upshifts and the fuel cut on the rev limiter. Press **▶ Listen** on an engine to hear idle, two blips and a full-throttle pull.
 
 ## Data and credits
 

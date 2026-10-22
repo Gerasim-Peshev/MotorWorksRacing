@@ -115,5 +115,6 @@ export const BG2 = {
 'Solid discs all round.': 'Плътни дискове навсякъде.', 'Bigger, cooler discs for fast cars.': 'По-големи и по-хладни дискове за бързи коли.', 'Huge stopping power, light weight.': 'Огромна спирачна сила и малко тегло.',
 'Shift up': 'Предавка нагоре', 'Shift down': 'Предавка надолу', 'Handbrake': 'Ръчна спирачка', 'Look back': 'Поглед назад', 'Reset car': 'Върни колата', 'Pause': 'Пауза',
 'Germany': 'Германия', 'Belgium': 'Белгия', 'Japan': 'Япония', 'Spain': 'Испания', 'Austria': 'Австрия', 'Bulgaria': 'България',
+'Listen': 'Чуй', 'Idle, two blips and a full-throttle pull to the limiter': 'Празен ход, две подгазвания и пълна газ до ограничителя',
 'Engines': 'Двигатели', 'New in 2026': 'Нова през 2026', 'Design car': 'Нова кола', 'Drive': 'Карай', 'Electric motor': 'Електромотор',
 };
