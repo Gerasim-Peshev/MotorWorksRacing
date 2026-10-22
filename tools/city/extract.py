@@ -1,7 +1,8 @@
 """One pass over the Bulgaria OSM file: keep everything the Sofia map needs inside a box around the Ring Road."""
 import osmium, pickle, sys, time
 PBF, OUT = sys.argv[1], sys.argv[2]
-W, E, S, N = 23.12, 23.52, 42.57, 42.80
+# bounding box: west east south north (default: Sofia)
+W, E, S, N = map(float, sys.argv[3].split(',')) if len(sys.argv) > 3 else (23.12, 23.52, 42.57, 42.80)
 inb = lambda lon, lat: W <= lon <= E and S <= lat <= N
 KEYS = ('highway', 'building', 'building:part', 'landuse', 'leisure', 'natural', 'amenity', 'railway', 'waterway', 'water', 'tourism', 'historic', 'man_made', 'place', 'bridge', 'area:highway', 'aeroway', 'barrier', 'shop')
 nodes, ways, rels, geom = [], [], [], {}

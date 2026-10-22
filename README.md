@@ -14,15 +14,20 @@ Design it, then drive it. A standalone 3D browser game built on the engine and c
 
 Layouts come from OpenStreetMap, elevation from real terrain data, so Eau Rouge climbs, the Nordschleife drops 280 m to Breidscheid and Turn 1 at the Red Bull Ring is uphill. A1 Motor Park is the exception: it isn't in the open map databases, so its 15-turn layout is traced from the official circuit map and its gentle elevation and the Rila/Plana hills around it are an estimate.
 
-## Free roam in Sofia
+## Free roam: Sofia and Veliko Tarnovo
 
-All of Sofia inside the Ring Road (294 km², 2,157 km of streets, about 89,000 buildings) is drivable, built from OpenStreetMap: the boulevards with their lanes, trams and zebra crossings, bridges and overpasses, parks, rivers, traffic lights, the airport runway, and Vitosha on the horizon from real elevation data. Building heights and colours come from the map where they are tagged and are estimated elsewhere.
+Two Bulgarian cities are drivable, built from OpenStreetMap. Both are laid out flat, so every street drives the same; only overpasses rise over the roads they cross.
+
+- **Sofia**: everything inside the Ring Road plus Gorna Banya (298 km², 2,200 km of streets, about 91,000 buildings): boulevards with their lanes, trams and zebra crossings, bridges and overpasses, parks, rivers, traffic lights and the airport runway, with Vitosha on the horizon from real elevation data. 11 challenges.
+- **Veliko Tarnovo**: the old capital on the bends of the Yantra (38 km², 193 km of streets, about 5,300 buildings), from the Mall to Tsarevets and Varusha. The hills around it are decorative. 7 challenges.
+
+Building heights and colours come from the map where they are tagged and are estimated elsewhere.
 
 - **Free roam**: drive anywhere. The minimap shows the real street network and the street name you are on.
 - **Drive to…**: pick a landmark from the pause menu. Cars fitted with navigation (the tycoon's *Navigation* option) get a route on the minimap; others follow the arrow.
-- **Challenges**: ten timed runs between landmarks (NDK to Alexander Nevsky, Lions' Bridge to Eagles' Bridge, the airport transfer, a runway top-speed run and more), any route allowed. Best times are saved per car under **Records**.
+- **Challenges**: timed runs between landmarks, any route allowed. Best times are saved per car under **Records**.
 
-The city streams in 1 km tiles as you drive (about 8 MB in total, cached for offline play once visited). On phones it uses a shorter view distance and fewer trees.
+The cities stream in 1 km tiles as you drive (cached for offline play once visited). On phones they use a shorter view distance and fewer trees.
 
 ## Put it online (GitHub Pages)
 
@@ -83,11 +88,10 @@ The garage starts empty: design an engine, build a car around it, then pick a ci
 
 `tools/build_tracks.py` turns an OpenStreetMap trace and a terrain grid into a track file (smoothing, widths, start line, elevation, bridges, racing line). Clone the two data repositories next to it, run it, then `node tools/index_tracks.mjs`, and add the new file to `sw.js`. `cd tools && node test_laps.mjs spa pc1,pc4` drives autopilot laps with the sample cars in `tools/sample_cars.mjs` to check a track.
 
-## Rebuilding the city
+## Rebuilding the cities
 
-`tools/city/` turns an OpenStreetMap extract and 3″ elevation tiles into the files in `city/sofia/`:
+`tools/city/` turns an OpenStreetMap extract into the files in `city/<id>/`, driven by a config per city (`sofia.json`, `veliko-tarnovo.json`: map area, flat level, landmarks, challenges):
 
-1. `python3 extract.py bulgaria-latest.osm.pbf sofia_raw.pkl` (from [Geofabrik](https://download.geofabrik.de/europe/bulgaria.html); needs `pip install osmium shapely scipy`).
-2. `python3 build_city.py sofia_raw.pkl <folder with N42E022.hgt and N42E023.hgt> ../../city/sofia` (tiles from Viewfinder Panoramas, area K34).
-3. `python3 make_info.py ../../city/sofia` for the menu summary and preview map.
-
+1. `python3 extract.py bulgaria-latest.osm.pbf sofia_raw.pkl` (Sofia) or `python3 extract.py bulgaria-latest.osm.pbf vt_raw.pkl 25.53,25.74,43.03,43.13` (a bounding box: west,east,south,north). The extract comes from [Geofabrik](https://download.geofabrik.de/europe/bulgaria.html); needs `pip install osmium shapely scipy matplotlib`.
+2. `python3 build_city.py sofia.json sofia_raw.pkl <folder with N42E022.hgt and N42E023.hgt> ../../city/sofia` (elevation tiles from Viewfinder Panoramas, area K34; a city without tiles gets decorative hills).
+3. `python3 make_info.py ../../city/sofia` for the menu summary and preview map, and list the city in `city/index.json`.

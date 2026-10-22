@@ -1,26 +1,32 @@
-"""Build the free-roam Sofia map from an OpenStreetMap extract (extract.py) and SRTM-derived 3" elevation tiles.
+"""Build a free-roam city map from an OpenStreetMap extract (extract.py), a city config (sofia.json, veliko-tarnovo.json)
+and optional 3" elevation tiles.
 
-  python3 build_city.py sofia_raw.pkl <dem_dir> <out_dir>
+  python3 build_city.py <config.json> <raw.pkl> <dem_dir> <out_dir>
 
 Output (out_dir):
-  meta.json      projection, playable area, region index, landmarks, challenges, skyline, credits
-  terrain.bin    Int16 height grid (0.1 m) over the whole view area, incl. Vitosha
+  meta.json      projection, playable area, region index, landmarks, challenges, credits
+  terrain.bin    Int16 height grid (0.1 m) over the whole view area
   net.bin        road network for the minimap and navigation
-  r_<i>_<j>.bin  1 km region tiles: roads, buildings, ground areas, rails, trees, crossings, signals
-World: x = east, z = south, metres from the centre (Sofia, Largo), y = up (metres above sea level).
+  skyline.bin    boxes of the taller buildings for the distant city
+  p_<I>_<J>.bin  packs of 1 km region tiles: roads, buildings, ground areas, rails, trees, crossings, signals
+With "flat" in the config the drivable area is levelled (everything drives the same); the terrain outside blends back to
+real elevation (or decorative hills when there is no elevation data).
+World: x = east, z = south, metres from the config centre, y = up (metres above sea level).
 """
 import sys, os, math, json, struct, pickle, heapq, collections, hashlib
 import numpy as np
-from scipy.ndimage import map_coordinates, gaussian_filter
-from shapely.geometry import Polygon, MultiPolygon, LineString, Point, box
+from scipy.ndimage import map_coordinates, gaussian_filter, distance_transform_edt
+from shapely.geometry import Polygon, MultiPolygon, LineString, Point, box, MultiLineString, MultiPoint
 from shapely.ops import unary_union, polygonize, linemerge
 from shapely.strtree import STRtree
+from shapely.prepared import prep
 from shapely import make_valid
+from matplotlib.path import Path as MPath
 
-RAW, DEM, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
+CFG = json.load(open(sys.argv[1])); RAW, DEM, OUT = sys.argv[2], sys.argv[3], sys.argv[4]
 os.makedirs(OUT, exist_ok=True)
 d = pickle.load(open(RAW, 'rb'))
-LAT0, LON0 = 42.6977, 23.3219
+LAT0, LON0 = CFG['center']
 KX = 111320 * math.cos(math.radians(LAT0)); KY = 110540
 def P(lon, lat): return ((lon - LON0) * KX, -(lat - LAT0) * KY)
 def LL(x, z): return (LON0 + x / KX, LAT0 - z / KY)
@@ -28,38 +34,71 @@ REG = 1000.0
 log = lambda *a: print(*a, flush=True)
 hid = lambda i: int(hashlib.md5(str(i).encode()).hexdigest()[:8], 16)
 
-# ------------------------------------------------------------ playable area: hull of the Ring Road (I-18) + margin
-ring = []
+# ------------------------------------------------------------ playable area
+AC = CFG['area']; parts = []
+bcent = []
 for wid, pts, ids, t in d['ways']:
-    if 'highway' in t and t['highway'] in ('trunk', 'primary', 'motorway', 'trunk_link', 'primary_link'):
-        refs = [r.strip() for r in t.get('ref', '').replace(',', ';').split(';')]
-        if '18' in refs: ring.append(LineString([P(*p) for p in pts]))
-from shapely.geometry import MultiLineString
-AREA = MultiLineString(ring).convex_hull.buffer(380).simplify(20)
-from shapely.prepared import prep
+    if 'building' in t and len(pts) > 2: q = [P(*p) for p in pts]; bcent.append((sum(p[0] for p in q) / len(q), sum(p[1] for p in q) / len(q)))
+bcent = np.array(bcent) if bcent else np.zeros((0, 2))
+if 'ringRef' in AC:      # hull of a ring road (Sofia: I-18) + margin
+    ring = []
+    for wid, pts, ids, t in d['ways']:
+        if 'highway' in t and t['highway'] in ('trunk', 'primary', 'motorway', 'trunk_link', 'primary_link'):
+            refs = [r.strip() for r in t.get('ref', '').replace(',', ';').split(';')]
+            if AC['ringRef'] in refs: ring.append(LineString([P(*p) for p in pts]))
+    parts.append(MultiLineString(ring).convex_hull.buffer(AC.get('buffer', 380)))
+if 'buildings' in AC:    # the built-up area around the centre: clusters of buildings, their hull + margin
+    B = AC['buildings']; pts = bcent[np.hypot(bcent[:, 0], bcent[:, 1]) < B['radius']]
+    blobs = unary_union([Point(x, z).buffer(90, 4) for x, z in pts])
+    keep = [g for g in (blobs.geoms if hasattr(blobs, 'geoms') else [blobs]) if sum(1 for x, z in pts if g.contains(Point(x, z))) >= B.get('minCluster', 20)]
+    parts.append(MultiPolygon(keep).convex_hull.buffer(AC.get('buffer', 300)))
+for inc in AC.get('include', []):   # extra quarters outside (Gorna Banya): their buildings, joined to the rest
+    x0, z0, x1, z1 = inc['box']; sel = bcent[(bcent[:, 0] > x0) & (bcent[:, 0] < x1) & (bcent[:, 1] > z0) & (bcent[:, 1] < z1)]
+    g = unary_union([Point(x, z).buffer(inc.get('buffer', 110), 4) for x, z in sel]).buffer(60).buffer(-60)
+    big = [q for q in (g.geoms if hasattr(g, 'geoms') else [g]) if q.area > 40000]
+    parts.append(unary_union(big)); log('include', inc.get('name'), len(sel), 'buildings', round(unary_union(big).area / 1e6, 2), 'km2')
+AREA = unary_union(parts).buffer(40).buffer(-40)
+if AREA.geom_type != 'Polygon': AREA = max(AREA.geoms, key=lambda g: g.area)
+AREA = Polygon(AREA.exterior).simplify(20)
 AREAP = prep(AREA)
 log('area km2', round(AREA.area / 1e6, 1), 'bounds', [round(v) for v in AREA.bounds])
 
 # ------------------------------------------------------------ terrain grid
-TX0, TX1, TZ0, TZ1, TS = -24000.0, 24000.0, -16000.0, 22000.0, 50.0
+TC = CFG['terrain']; TX0, TX1, TZ0, TZ1 = map(float, TC['extent']); TS = float(TC.get('step', 50))
 NX, NZ = int((TX1 - TX0) / TS) + 1, int((TZ1 - TZ0) / TS) + 1
-def hgt(fn):
-    a = np.fromfile(fn, dtype='>i2').reshape(1201, 1201).astype(np.float32)
-    bad = a < -500
-    if bad.any(): a[bad] = np.nan
-    return a
-tiles = {}
-for lon in (22, 23):
-    fn = os.path.join(DEM, f'N42E{lon:03d}.hgt')
-    if os.path.exists(fn): tiles[lon] = hgt(fn)
-DEMA = np.concatenate([tiles[22][:, :-1], tiles[23]], axis=1) if 22 in tiles else tiles[23]
-DLON0 = 22 if 22 in tiles else 23
 gx = TX0 + np.arange(NX) * TS; gz = TZ0 + np.arange(NZ) * TS
 GXX, GZZ = np.meshgrid(gx, gz)
 lon = LON0 + GXX / KX; lat = LAT0 - GZZ / KY
-rows = (43 - lat) * 1200; cols = (lon - DLON0) * 1200
-H = map_coordinates(np.nan_to_num(DEMA, nan=550), [rows, cols], order=3, mode='nearest').astype(np.float32)
-H = gaussian_filter(H, 0.8)
+def hgt(fn):
+    a = np.fromfile(fn, dtype='>i2').reshape(1201, 1201).astype(np.float32); a[a < -500] = np.nan; return a
+tiles = {}
+for nm in TC.get('dem', []):
+    fn = os.path.join(DEM, nm + '.hgt')
+    if os.path.exists(fn): tiles[(int(nm[1:3]), int(nm[4:7]))] = hgt(fn)
+# outside / inside the playable area, distance to it
+inside = MPath(np.array(AREA.exterior.coords)).contains_points(np.c_[GXX.ravel(), GZZ.ravel()]).reshape(GXX.shape)
+DOUT = distance_transform_edt(~inside) * TS
+if tiles:
+    la0, la1 = min(k[0] for k in tiles), max(k[0] for k in tiles); lo0, lo1 = min(k[1] for k in tiles), max(k[1] for k in tiles)
+    M = np.full(((la1 - la0 + 1) * 1200 + 1, (lo1 - lo0 + 1) * 1200 + 1), np.nan, np.float32)
+    for (la, lo), a in tiles.items():
+        r0 = (la1 - la) * 1200; c0 = (lo - lo0) * 1200; M[r0:r0 + 1201, c0:c0 + 1201] = a
+    fill = np.nanmedian(M)
+    H = map_coordinates(np.nan_to_num(M, nan=fill), [(la1 + 1 - lat) * 1200, (lon - lo0) * 1200], order=3, mode='nearest').astype(np.float32)
+    H = gaussian_filter(H, 0.8)
+else:
+    H = np.zeros_like(GXX, dtype=np.float32)
+FLAT = TC.get('flat')
+if FLAT is not None:
+    level = float(np.median(H[inside])) if FLAT == 'median' else float(FLAT)
+    if not tiles:                      # no elevation data: decorative hills around the city
+        hc = TC.get('hills', {}); rng = np.random.default_rng(hc.get('seed', 1))
+        n = gaussian_filter(rng.normal(size=H.shape), 18) ; n = (n - n.min()) / (n.max() - n.min())
+        ramp = np.clip((DOUT - hc.get('start', 700)) / hc.get('range', 4000), 0, 1); ramp = ramp * ramp * (3 - 2 * ramp)
+        H = level + hc.get('amp', 200) * (.35 + .65 * n) * ramp
+    w = np.clip((DOUT - TC.get('margin', 250)) / TC.get('blend', 1500), 0, 1); w = w * w * (3 - 2 * w)
+    H = (level * (1 - w) + H * w).astype(np.float32)
+    log('flat level', round(level, 1), 'm')
 H = np.round(H * 10) / 10
 def terrain(x, z):
     fx = (x - TX0) / TS; fz = (z - TZ0) / TS
@@ -622,7 +661,7 @@ def write_region(key, R):
     hj += b' ' * ((4 - (len(hj) + 8) % 4) % 4)
     return b'MWC1' + struct.pack('<I', len(hj)) + hj + blobs
 # tiles are bundled into packs of PACK x PACK km (fewer files to host and upload)
-PACK = 4
+PACK = CFG.get('pack', 4)
 for fn in os.listdir(OUT):
     if (fn.startswith('r_') or fn.startswith('p_')) and fn.endswith('.bin'): os.remove(os.path.join(OUT, fn))
 packs = collections.defaultdict(list); tot = 0; sizes = {}
@@ -697,55 +736,33 @@ def snap(x, z, maxc=7):
     dd = np.hypot(RPA[:, 0] - x, RPA[:, 1] - z) + np.array([0 if p[2] <= 5 else 70 if p[2] <= maxc else 1e6 for p in road_pts])
     k = int(np.argmin(dd)); p = road_pts[k]
     return dict(x=round(p[0], 1), z=round(p[1], 1), y=round(p[5], 1), dx=round(p[3], 3), dz=round(p[4], 3))
-LM = [
-    ('nevsky', 'Alexander Nevsky Cathedral', 'Храм-паметник „Св. Александър Невски“', lambda: way_centroid(155447771)),
-    ('ndk', 'National Palace of Culture', 'НДК', lambda: way_centroid(157725682)),
-    ('station', 'Central Railway Station', 'Централна гара', lambda: nodepos.get(319270444)),
-    ('stadium', 'Vasil Levski National Stadium', 'Национален стадион „Васил Левски“', lambda: find_named('Национален стадион') or find_named('Стадион „Васил Левски“')),
-    ('eagles', "Eagles' Bridge", 'Орлов мост', lambda: way_centroid(397520151)),
-    ('lions', "Lions' Bridge", 'Лъвов мост', lambda: way_centroid(397651408)),
-    ('airport', 'Sofia Airport, Terminal 2', 'Летище София, Терминал 2', lambda: nodepos.get(676275899)),
-    ('bizpark', 'Business Park Sofia', 'Бизнес парк София', lambda: nodepos.get(1309442079)),
-    ('nedelya', 'Sveta Nedelya Cathedral', 'Катедрала „Света Неделя“', lambda: way_centroid(162789700)),
-    ('parliament', 'National Assembly', 'Народно събрание', lambda: way_centroid(1457152034)),
-    ('studgrad', 'Studentski Grad', 'Студентски град', lambda: nodepos.get(243841474)),
-    ('southpark', 'South Park', 'Южен парк', lambda: way_centroid(157690247)),
-    ('vivacom', 'Georgi Asparuhov Stadium', 'Стадион „Георги Аспарухов“', lambda: way_centroid(292953722)),
-    ('zoo', 'Sofia Zoo', 'Зоопарк София', lambda: nodepos.get(2648784000)),
-    ('boyana', 'Boyana Church', 'Боянска църква', lambda: way_centroid(44890267)),
-]
 landmarks = {}
-for key, en, bg, fn in LM:
-    try: p = fn()
-    except Exception as e: p = None
-    if not p or not AREAP.contains(Point(p)): log('landmark missing/outside', key); continue
-    s = snap(p[0], p[1])
-    landmarks[key] = dict(en=en, bg=bg, x=round(p[0], 1), z=round(p[1], 1), road=s)
-# runway
-rw = [r for r in roads if r['c'] == 16]
+for L in CFG['landmarks']:
+    p = None
+    try:
+        if 'way' in L: p = way_centroid(L['way'])
+        elif 'node' in L: p = nodepos.get(L['node'])
+        if p is None and 'name' in L:
+            for nm in L['name']:
+                p = find_named(nm)
+                if p: break
+    except Exception: p = None
+    if not p or not AREAP.contains(Point(p)): log('landmark missing/outside', L['key']); continue
+    s_ = snap(p[0], p[1])
+    landmarks[L['key']] = dict(en=L['en'], bg=L['bg'], x=round(p[0], 1), z=round(p[1], 1), road=s_)
+rw = [r for r in roads if r['c'] == 16] if CFG.get('runway') else []
 if rw:
     r = max(rw, key=lambda r: LineString(r['q']).length); a, b = r['q'][0], r['q'][-1]
     L = math.hypot(b[0] - a[0], b[1] - a[1]); dx, dz = (b[0] - a[0]) / L, (b[1] - a[1]) / L
     landmarks['rwy_a'] = dict(en='Runway 09', bg='Писта 09', x=a[0] + dx * 120, z=a[1] + dz * 120, road=dict(x=round(a[0] + dx * 120, 1), z=round(a[1] + dz * 120, 1), y=round(terrain(a[0], a[1]), 1), dx=round(dx, 3), dz=round(dz, 3)))
     landmarks['rwy_b'] = dict(en='Runway 27', bg='Писта 27', x=b[0] - dx * 120, z=b[1] - dz * 120, road=dict(x=round(b[0] - dx * 120, 1), z=round(b[1] - dz * 120, 1), y=round(terrain(b[0], b[1]), 1), dx=round(-dx, 3), dz=round(-dz, 3)))
 log('landmarks', list(landmarks))
-CH = [
-    ('boulevard', 'Boulevard Sprint', 'Спринт по булеварда', 'ndk', 'nevsky'),
-    ('bridges', 'Bridge to Bridge', 'От мост до мост', 'lions', 'eagles'),
-    ('station', 'Station Dash', 'До стадиона', 'station', 'stadium'),
-    ('parliament', 'Government Quarter', 'Правителственият квартал', 'nedelya', 'parliament'),
-    ('students', 'Student Rush', 'Студентско бързане', 'studgrad', 'nedelya'),
-    ('airport', 'Airport Transfer', 'Трансфер до летището', 'nevsky', 'airport'),
-    ('commute', 'Business Park Commute', 'До Бизнес парка', 'eagles', 'bizpark'),
-    ('derby', 'Stadium Derby', 'Дерби', 'vivacom', 'stadium'),
-    ('runway', 'Runway Top Speed', 'Максимална скорост на пистата', 'rwy_a', 'rwy_b'),
-    ('zoo', 'Zoo to Cathedral', 'От зоопарка до катедралата', 'zoo', 'nevsky'),
-]
 challenges = []
-for cid, en, bg, a, b in CH:
+for cid, en, bg, a, b in CFG['challenges']:
     if a in landmarks and b in landmarks:
         A_, B_ = landmarks[a]['road'], landmarks[b]['road']
         challenges.append(dict(id=cid, en=en, bg=bg, a=a, b=b, km=round(math.hypot(A_['x'] - B_['x'], A_['z'] - B_['z']) / 1000, 1)))
+    else: log('challenge dropped', cid)
 # far city: oriented boxes of every building 18 m and taller, tagged with their region (hidden where the tile is built)
 reg_index = {tuple(k): n for n, k in enumerate(sorted([list(k) for k in REGIONS]))}
 sky = []
@@ -758,18 +775,18 @@ for b in buildings:
     c4 = list(rect.exterior.coords)[:4]
     sky.append((c4, b['base'], b['h'] - (b['rh'] if b['rs'] else 0), b['col'], b['st'], reg_index[key]))
 buf = bytearray(struct.pack('<4sI', b'MWS1', len(sky)))
-P = np.array([[round(v * 2) for xz in c4 for v in xz] for c4, *_ in sky], dtype='<i2')
-buf += P.tobytes() + np.array([round(x[1] * 10) for x in sky], dtype='<i2').tobytes() + np.array([round(x[2] * 10) for x in sky], dtype='<u2').tobytes()
+SP = np.array([[round(v * 2) for xz in c4 for v in xz] for c4, *_ in sky], dtype='<i2').reshape(-1, 8)
+buf += SP.tobytes() + np.array([round(x[1] * 10) for x in sky], dtype='<i2').tobytes() + np.array([round(x[2] * 10) for x in sky], dtype='<u2').tobytes()
 buf += np.array([x[5] for x in sky], dtype='<u2').tobytes() + np.array([x[3] for x in sky], dtype='u1').tobytes() + np.array([x[4] for x in sky], dtype='u1').tobytes()
 open(os.path.join(OUT, 'skyline.bin'), 'wb').write(buf)
 skyline = []
 log('far city boxes', len(sky), 'KB', round(len(buf) / 1e3))
-spawn = landmarks['ndk']['road'] if 'ndk' in landmarks else snap(0, 0)
-meta = dict(v=1, id='sofia', name='Sofia', proj=dict(lat0=LAT0, lon0=LON0, kx=KX, ky=KY), reg=REG, pack=PACK,
+spawn = landmarks[CFG['spawn']]['road'] if CFG.get('spawn') in landmarks else snap(0, 0)
+meta = dict(v=1, id=CFG['id'], name=CFG['name'], nameBg=CFG.get('nameBg', CFG['name']), desc=CFG.get('desc', {}), flat=FLAT is not None, proj=dict(lat0=LAT0, lon0=LON0, kx=KX, ky=KY), reg=REG, pack=PACK,
             regions=sorted([list(k) for k in REGIONS]), sizes={f'{k[0]}_{k[1]}': v for k, v in sizes.items()},
             terrain=dict(x0=TX0, z0=TZ0, s=TS, nx=NX, nz=NZ),
             area=[[round(x), round(z)] for x, z in AREA.exterior.coords[:-1]], names=names,
             landmarks=landmarks, challenges=challenges, skyN=len(sky), spawn=spawn,
-            credits=['Map data © OpenStreetMap contributors (ODbL 1.0)', 'Elevation: Viewfinder Panoramas 3" DEM (J. de Ferranti), from SRTM'])
+            credits=CFG.get('credits', ['Map data © OpenStreetMap contributors (ODbL 1.0)']))
 json.dump(meta, open(os.path.join(OUT, 'meta.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
 log('meta KB', round(os.path.getsize(os.path.join(OUT, 'meta.json')) / 1e3), 'challenges', [c['id'] for c in challenges])

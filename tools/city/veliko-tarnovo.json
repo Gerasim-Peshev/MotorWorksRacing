@@ -1,0 +1,35 @@
+{
+  "id": "veliko-tarnovo", "name": "Veliko Tarnovo", "nameBg": "Велико Търново",
+  "center": [43.0790, 25.6260],
+  "desc": {
+    "en": "The old capital on the bends of the Yantra, built from OpenStreetMap and laid out flat so every street drives the same: from the Mall to Tsarevets, through Varusha and past the Asen Dynasty Monument.",
+    "bg": "Старата столица по завоите на Янтра, изградена по OpenStreetMap и изравнена, за да се кара еднакво навсякъде: от Мола до Царевец, през Варуша и покрай паметника на Асеневци."
+  },
+  "area": { "buildings": { "radius": 4300, "minCluster": 25 }, "buffer": 320 },
+  "terrain": { "extent": [-12000, 12000, -10000, 10000], "step": 50, "dem": [], "flat": 215, "margin": 250, "blend": 1500, "hills": { "amp": 230, "start": 700, "range": 4000, "seed": 7 } },
+  "pack": 6,
+  "landmarks": [
+    { "key": "tsarevets", "en": "Tsarevets Fortress", "bg": "Крепост Царевец", "way": 36187884 },
+    { "key": "trapezitsa", "en": "Trapezitsa", "bg": "Трапезица", "way": 308853592 },
+    { "key": "asenevtsi", "en": "Asen Dynasty Monument", "bg": "Паметник на Асеневци", "node": 2123050220 },
+    { "key": "maika", "en": "Mother Bulgaria Square", "bg": "Площад „Майка България“", "node": 2308412945 },
+    { "key": "stadium", "en": "Ivaylo Stadium", "bg": "Стадион „Ивайло“", "way": 222753623 },
+    { "key": "busyug", "en": "South Bus Station", "bg": "Автогара Юг", "way": 222469629 },
+    { "key": "buszapad", "en": "West Bus Station", "bg": "Автогара Запад", "way": 202338304 },
+    { "key": "mall", "en": "Mall Veliko Tarnovo", "bg": "Мол Велико Търново", "way": 222900686 },
+    { "key": "svetagora", "en": "Sveta Gora Lake", "bg": "Езеро „Света гора“", "way": 27941135 },
+    { "key": "varusha", "en": "Varusha", "bg": "Варуша", "node": 2323547791 },
+    { "key": "kartala", "en": "Kartala", "bg": "Картала", "node": 2323547793 }
+  ],
+  "challenges": [
+    ["fortress", "To the Fortress", "Към крепостта", "stadium", "tsarevets"],
+    ["monument", "Monument Run", "От паметник до паметник", "maika", "tsarevets"],
+    ["buses", "Bus Station Shuttle", "Между автогарите", "buszapad", "busyug"],
+    ["mall", "Mall to Tsarevets", "От Мола до Царевец", "mall", "tsarevets"],
+    ["hills", "Between the Hills", "Между хълмовете", "trapezitsa", "svetagora"],
+    ["oldtown", "Old Town Dash", "През стария град", "kartala", "varusha"],
+    ["across", "Across Tarnovo", "През целия град", "buszapad", "svetagora"]
+  ],
+  "spawn": "maika",
+  "credits": ["Map data © OpenStreetMap contributors (ODbL 1.0)", "The hills around the city are decorative"]
+}

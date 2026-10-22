@@ -1,0 +1,44 @@
+{
+  "id": "sofia", "name": "Sofia", "nameBg": "София",
+  "center": [42.6977, 23.3219],
+  "desc": {
+    "en": "All of Sofia inside the Ring Road, plus Gorna Banya, built from OpenStreetMap and laid out flat so every street drives the same: drive anywhere, take on timed challenges between landmarks, or set a destination and follow the navigation.",
+    "bg": "Цяла София в рамките на Околовръстния път плюс Горна баня, изградена по OpenStreetMap и изравнена, за да се кара еднакво навсякъде: карайте където пожелаете, гонете време между забележителности или изберете цел и следвайте навигацията."
+  },
+  "area": { "ringRef": "18", "buffer": 380, "include": [ { "name": "Gorna Banya", "box": [-8700, 1300, -5900, 3500], "buffer": 110 } ] },
+  "terrain": { "extent": [-24000, 24000, -16000, 22000], "step": 50, "dem": ["N42E022", "N42E023"], "flat": "median", "margin": 250, "blend": 1800 },
+  "pack": 6,
+  "landmarks": [
+    { "key": "nevsky", "en": "Alexander Nevsky Cathedral", "bg": "Храм-паметник „Св. Александър Невски“", "way": 155447771 },
+    { "key": "ndk", "en": "National Palace of Culture", "bg": "НДК", "way": 157725682 },
+    { "key": "station", "en": "Central Railway Station", "bg": "Централна гара", "node": 319270444 },
+    { "key": "stadium", "en": "Vasil Levski National Stadium", "bg": "Национален стадион „Васил Левски“", "name": ["Национален стадион", "Стадион „Васил Левски“"] },
+    { "key": "eagles", "en": "Eagles' Bridge", "bg": "Орлов мост", "way": 397520151 },
+    { "key": "lions", "en": "Lions' Bridge", "bg": "Лъвов мост", "way": 397651408 },
+    { "key": "airport", "en": "Sofia Airport, Terminal 2", "bg": "Летище София, Терминал 2", "node": 676275899 },
+    { "key": "bizpark", "en": "Business Park Sofia", "bg": "Бизнес парк София", "node": 1309442079 },
+    { "key": "nedelya", "en": "Sveta Nedelya Cathedral", "bg": "Катедрала „Света Неделя“", "way": 162789700 },
+    { "key": "parliament", "en": "National Assembly", "bg": "Народно събрание", "way": 1457152034 },
+    { "key": "studgrad", "en": "Studentski Grad", "bg": "Студентски град", "node": 243841474 },
+    { "key": "southpark", "en": "South Park", "bg": "Южен парк", "way": 157690247 },
+    { "key": "vivacom", "en": "Georgi Asparuhov Stadium", "bg": "Стадион „Георги Аспарухов“", "way": 292953722 },
+    { "key": "zoo", "en": "Sofia Zoo", "bg": "Зоопарк София", "node": 2648784000 },
+    { "key": "gornabanya", "en": "Gorna Banya", "bg": "Горна баня", "name": ["пл. Горна баня"] }
+  ],
+  "runway": true,
+  "challenges": [
+    ["boulevard", "Boulevard Sprint", "Спринт по булеварда", "ndk", "nevsky"],
+    ["bridges", "Bridge to Bridge", "От мост до мост", "lions", "eagles"],
+    ["station", "Station Dash", "До стадиона", "station", "stadium"],
+    ["parliament", "Government Quarter", "Правителственият квартал", "nedelya", "parliament"],
+    ["students", "Student Rush", "Студентско бързане", "studgrad", "nedelya"],
+    ["airport", "Airport Transfer", "Трансфер до летището", "nevsky", "airport"],
+    ["commute", "Business Park Commute", "До Бизнес парка", "eagles", "bizpark"],
+    ["derby", "Stadium Derby", "Дерби", "vivacom", "stadium"],
+    ["runway", "Runway Top Speed", "Максимална скорост на пистата", "rwy_a", "rwy_b"],
+    ["zoo", "Zoo to Cathedral", "От зоопарка до катедралата", "zoo", "nevsky"],
+    ["gornabanya", "West End Run", "До Горна баня", "ndk", "gornabanya"]
+  ],
+  "spawn": "ndk",
+  "credits": ["Map data © OpenStreetMap contributors (ODbL 1.0)", "Elevation (Vitosha and the hills around): Viewfinder Panoramas 3\" DEM (J. de Ferranti), from SRTM"]
+}

@@ -16,6 +16,7 @@ export const BG2 = {
 'No cars yet': 'Още няма коли', 'From MotorWorks Tycoon': 'От MotorWorks Tycoon',
 'Your company {name} has {e} engines and {c} cars on this device.': 'Компанията ви {name} има {e} двигателя и {c} коли на това устройство.',
 'Import them into the garage': 'Внеси ги в гаража', 'Green Hell': 'Зеленият ад',
+'Loading the map of {city}…': 'Зареждане на картата на {city}…',
 'Sofia: map data © OpenStreetMap contributors (ODbL). Elevation: Viewfinder Panoramas 3″ DEM by Jonathan de Ferranti, based on SRTM.': 'София: картни данни © сътрудници на OpenStreetMap (ODbL). Релеф: Viewfinder Panoramas 3″ DEM на Джонатан де Феранти, по данни от SRTM.',
 'Sofia': 'София',
 'Loading the map of Sofia…': 'Зареждане на картата на София…',

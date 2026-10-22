@@ -87,7 +87,7 @@ export class App {
   async boot() {
     document.documentElement.lang = LANG;
     try { this.tracks = await (await fetch('tracks/index.json')).json() } catch (e) { this.tracks = [] }
-    try { this.cities = [await (await fetch('city/sofia/info.json')).json()] } catch (e) { this.cities = [] }
+    try { const ids = await (await fetch('city/index.json')).json(); this.cities = (await Promise.all(ids.map(id => fetch(`city/${id}/info.json`).then(r => r.json()).catch(() => null)))).filter(Boolean) } catch (e) { this.cities = [] }
     this.renderTop(); this.renderNav(); this.renderView();
     document.addEventListener('click', e => { const t = e.target.closest('[data-a]'); if (!t || t.disabled) return; audioCtx(); this.act(t.dataset.a, t) });
     document.addEventListener('input', e => this.onInput(e));
@@ -161,12 +161,12 @@ export class App {
     return `<div class="sect-h"><div><small>${tx('Real layouts and real elevation')}</small><h2>${tx('Tracks')}</h2></div></div><div class="grid">${(this.cities || []).map(c => this.cityCard(c)).join('')}${this.tracks.map(card).join('')}</div>
 `;
   }
-  cityName(c) { return LANG === 'bg' ? (c.id === 'sofia' ? 'София' : c.name) : c.name }
+  cityName(c) { return LANG === 'bg' ? (c.nameBg || c.name) : c.name }
   cityCard(c) {
     const chs = c.challenges.map(ch => { const r = this.store.trackRecords(c.id + ':' + ch.id)[0]; return `<button class="chbtn" data-a="pickCar:${c.id}~${ch.id}"><span><b>${esc(LANG === 'bg' ? ch.bg : ch.en)}</b><small>${dec(ch.km, 1)} ${tx('km')}</small></span><small>${r ? fmtTime(r.t) : '–'}</small></button>` }).join('');
     return `<article class="card trkcard citycard"><div class="spread"><div><small>${tx('Bulgaria')} · ${tx('Free roam')}</small><h3>${esc(this.cityName(c))}</h3></div><span class="tag y">${tx('New')}</span></div>
       <div class="cityin"><div class="citybox"><img src="city/${c.id}/preview.svg" alt="${esc(tx('Map of {city}', { city: this.cityName(c) }))}" loading="lazy" width="300" height="320"></div>
-      <div class="citytxt"><p class="muted">${tx('All of Sofia inside the Ring Road, built from OpenStreetMap: drive anywhere, take on timed challenges between landmarks, or set a destination and follow the navigation.')}</p>
+      <div class="citytxt"><p class="muted">${esc((c.desc && (c.desc[LANG] || c.desc.en)) || '')}</p>
         <div class="dl"><div><small>${tx('Area')}</small><b>${fn(c.km2)} ${tx('km²')}</b></div><div><small>${tx('Streets')}</small><b>${fn(c.streetKm)} ${tx('km')}</b></div><div><small>${tx('Buildings')}</small><b>${fn(c.buildings)}</b></div><div><small>${tx('Challenges')}</small><b>${c.challenges.length}</b></div></div>
         <button class="btn primary" data-a="pickCar:${c.id}">${tx('Free roam in {city}', { city: this.cityName(c) })}</button>
         <small class="lbl">${tx('Challenges')}</small><div class="chlist">${chs}</div></div></div></article>`;
@@ -407,7 +407,7 @@ export class App {
     const t = this.placeMeta(trackId), c = this.store.car(carId), e = c && this.store.engine(c.eng);
     if (!t || !c || !e) return;
     this.closeModal(); this.closeSheet(); audioCtx();
-    if (t.city) { const { CitySession } = await import('./citydrive.js'); this.session = new CitySession(this, { cityId: t.city.id, challenge: t.ch?.id, car: c, engine: e, number: (this.store.cars.indexOf(c) % 98) + 1 }); return this.session.start() }
+    if (t.city) { const { CitySession } = await import('./citydrive.js'); this.session = new CitySession(this, { cityId: t.city.id, cityName: this.cityName(t.city), challenge: t.ch?.id, car: c, engine: e, number: (this.store.cars.indexOf(c) % 98) + 1 }); return this.session.start() }
     this.session = new DriveSession(this, { trackMeta: t, car: c, engine: e, mode, number: (this.store.cars.indexOf(c) % 98) + 1 });
     await this.session.start();
   }

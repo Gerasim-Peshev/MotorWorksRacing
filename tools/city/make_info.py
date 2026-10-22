@@ -27,7 +27,7 @@ for tb in tiles():
     nb += len(R['bn']); nt += len(R['tp']) // 2
 # area
 A = meta['area']; area = abs(sum(A[k][0] * A[(k + 1) % len(A)][1] - A[(k + 1) % len(A)][0] * A[k][1] for k in range(len(A)))) / 2
-info = dict(id=meta['id'], name=meta['name'], km2=round(area / 1e6), streetKm=round(km / 1000), buildings=nb, trees=nt,
+info = dict(id=meta['id'], name=meta['name'], nameBg=meta.get('nameBg', meta['name']), desc=meta.get('desc', {}), flat=meta.get('flat', False), km2=round(area / 1e6), streetKm=round(km / 1000), buildings=nb, trees=nt,
             challenges=[dict(id=c['id'], en=c['en'], bg=c['bg'], a=c['a'], b=c['b'], km=c['km']) for c in meta['challenges']],
             landmarks={k: dict(en=v['en'], bg=v['bg']) for k, v in meta['landmarks'].items()}, credits=meta['credits'])
 json.dump(info, open(os.path.join(D, 'info.json'), 'w'), ensure_ascii=False, separators=(',', ':'))
@@ -41,7 +41,8 @@ W = 400; sc = W / (x1 - x0); H = round((z1 - z0) * sc)
 f = lambda x, z: f'{(x - x0) * sc:.0f},{(z - z0) * sc:.0f}'
 paths = {1: [], 2: [], 3: []}
 for e in range(nE):
-    c = E[e, 2] & 255; g = 1 if c in (1, 2) else 2 if c in (3,) else 0
+    c = E[e, 2] & 255; small = area < 80e6
+    g = (1 if c in (1, 2, 3) else 2 if c in (4, 5) else 3 if c in (6, 7) else 0) if small else (1 if c in (1, 2) else 2 if c in (3,) else 0)
     if not g: continue
     s, n = E[e, 3], PC[e]; pts = P[s:s + n]
     q = [f(x, z) for x, z in pts[::max(1, n // 3)].tolist() + [pts[-1].tolist()]]; q = [v for k, v in enumerate(q) if k == 0 or v != q[k - 1]]
@@ -49,6 +50,7 @@ for e in range(nE):
 svg = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" fill="none" stroke-linecap="round" stroke-linejoin="round">',
        f'<path d="M{" ".join(f(x, z) for x, z in A)}Z" fill="#cfd6c9" stroke="#18201b" stroke-width="1.5" stroke-dasharray="4 3"/>',
        f'<path d="{" ".join(paths[3])}" stroke="#7a857d" stroke-width=".8"/>',
+       f'<path d="{" ".join(paths[3])}" stroke="#8a948e" stroke-width=".7"/>',
        f'<path d="{" ".join(paths[2])}" stroke="#18201b" stroke-width="1.3"/>',
        f'<path d="{" ".join(paths[1])}" stroke="#f2b705" stroke-width="2.6"/>']
 for c in meta['challenges']:

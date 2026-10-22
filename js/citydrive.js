@@ -19,12 +19,14 @@ export const challengeKey = (cityId, id) => `${cityId}:${id}`;
 export class CitySession extends DriveSession {
   async start() {
     const o = this.o, root = this.root = el('div', 'drive'); document.body.append(root);
-    const load = el('div', 'drive-load', `<div><small>${tx('Loading')}</small><h2>${tx('Sofia')}</h2><p id="dl-msg">${tx('Loading the map of Sofia…')}</p></div>`); root.append(load);
+    const cn = o.cityName || o.cityId;
+    const load = el('div', 'drive-load', `<div><small>${tx('Loading')}</small><h2>${esc(cn)}</h2><p id="dl-msg">${tx('Loading the map of {city}…', { city: cn })}</p></div>`); root.append(load);
     document.documentElement.classList.add('driving');
     const step = async m => { load.querySelector('#dl-msg').textContent = m; await new Promise(r => setTimeout(r, 20)) };
     this.lapsDone = []; this.sessionBest = null; this.state = 'free'; this.clock = 0;
     try {
       this.city = this.track = await loadCity(o.cityId || 'sofia');
+      this.cityName = LANG === 'bg' ? (this.city.meta.nameBg || this.city.meta.name) : this.city.meta.name;
       this.city.regions.clear(); this.city.lastY = null;
       this.world = new CityWorld(this.city, { quality: this.q });
       this.setupScene(); this.setupCar(); this.ghost = null; this.rec = [];
@@ -133,7 +135,7 @@ export class CitySession extends DriveSession {
     const units = this.settings.units === 'mph' ? 'mph' : 'km/h';
     h.innerHTML = `
       <div class="hud-tl city"><div class="hud-street" id="h-street"></div><div id="h-ch"></div></div>
-      <div class="hud-tr"><canvas id="h-map" width="220" height="220"></canvas><div class="hud-trk" id="h-area">${tx('Sofia')}</div></div>
+      <div class="hud-tr"><canvas id="h-map" width="220" height="220"></canvas><div class="hud-trk" id="h-area">${esc(this.cityName)}</div></div>
       <div class="hud-nav" id="h-nav"><i id="h-arrow">➤</i><span id="h-dist"></span></div>
       <div class="hud-br"><div class="hud-gear" id="h-gear">N</div><div class="hud-spd"><b id="h-spd">0</b><small>${units}</small></div>
         <div class="hud-rpm"><i id="h-rpm"></i><s style="left:${(this.spec.curve.ev ? 100 : 94)}%"></s></div>
@@ -177,7 +179,7 @@ export class CitySession extends DriveSession {
         <div class="hud-row"><small>${tx('Best')}</small><span>${best ? fmtTime(best.t) : '–'}</span></div>
         ${mine && best && mine.car !== best.car ? `<div class="hud-row"><small>${tx('This car')}</small><span>${fmtTime(mine.t)}</span></div>` : ''}`;
     } else if (this.target) html = `<div class="hud-row"><small>${tx('Drive to')}</small><span>${esc(this.target.name)}</span></div>`;
-    else html = `<div class="hud-row"><small>${tx('Free roam')}</small><span>${tx('Sofia')}</span></div>`;
+    else html = `<div class="hud-row"><small>${tx('Free roam')}</small><span>${esc(this.cityName)}</span></div>`;
     if (html !== this.lastChHtml) { $('h-ch').innerHTML = html; this.lastChHtml = html }
     // arrow and distance to the target
     const nav = $('h-nav');
@@ -308,7 +310,7 @@ export class CitySession extends DriveSession {
         <button class="btn ghost" data-p="exit">${tx('Back to the garage')}</button></div>`;
     }
     const title = view === 'ch' ? tx('Challenges') : view === 'goto' ? tx('Drive to…') : tx('Paused');
-    p.innerHTML = `<div class="pause-in"><small>${tx('Sofia')}${this.ch ? ' · ' + esc(this.chName(this.ch.def)) : ''}</small><h2>${title}</h2>${body}
+    p.innerHTML = `<div class="pause-in"><small>${esc(this.cityName)}${this.ch ? ' · ' + esc(this.chName(this.ch.def)) : ''}</small><h2>${title}</h2>${body}
       ${view === 'main' ? `<p class="muted small">${this.input.pad ? tx('Controller: menu button pauses, view button resets the car, Y/△ changes camera, B/○ and X/□ shift gears, A/✕ handbrake.') : tx('Keyboard: arrows or WASD drive, E/Q shift, Space handbrake, C camera, R reset, Esc pause.')}</p>` : ''}</div>`;
     p.onclick = e => { const b = e.target.closest('[data-p]'); if (b) this.pauseAct(b.dataset.p) };
     p.oninput = e => { if (e.target.id !== 'p-vol') return; const v = +e.target.value; this.app.saveSetting('volume', v); p.querySelector('#p-vol-v').textContent = Math.round(v * 100) + '%'; this.preview() };
