@@ -20,6 +20,7 @@ function renderer(q) {
   return RENDERER;
 }
 export function sharedRenderer() { return RENDERER }
+export function getRenderer(q) { return renderer(q) }
 
 const CAMS = ['chase', 'far', 'hood', 'bumper', 'tv'];
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e };
@@ -228,7 +229,7 @@ export class DriveSession {
   frame(now) {
     if (this.disposed) return;
     requestAnimationFrame(this.frame);
-    let dt = Math.min(.05, (now - this.last) / 1000); this.last = now;
+    let dt = Math.max(0, Math.min(.05, (now - this.last) / 1000)); this.last = now;
     const inp = this.input.poll(dt), E = this.input.edges;
     if (E.pause) { this.pause(!this.paused); }
     if (this.paused) { this.app.nav.poll(dt); return }
@@ -414,6 +415,7 @@ export class DriveSession {
     else this.msg(tx('Autopilot off'), 1.5);
   }
   /* ---------------- pause menu ---------------- */
+  pauseBack() { this.pause(false) }
   pause(on) {
     if (on === this.paused) return;
     this.paused = on;

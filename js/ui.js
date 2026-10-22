@@ -87,6 +87,7 @@ export class App {
   async boot() {
     document.documentElement.lang = LANG;
     try { this.tracks = await (await fetch('tracks/index.json')).json() } catch (e) { this.tracks = [] }
+    try { this.cities = [await (await fetch('city/sofia/info.json')).json()] } catch (e) { this.cities = [] }
     this.renderTop(); this.renderNav(); this.renderView();
     document.addEventListener('click', e => { const t = e.target.closest('[data-a]'); if (!t || t.disabled) return; audioCtx(); this.act(t.dataset.a, t) });
     document.addEventListener('input', e => this.onInput(e));
@@ -104,7 +105,7 @@ export class App {
   applyInputSettings() { const s = this.store.settings; Object.assign(this.input.settings, { vibration: s.vibration, steerDead: s.steerDead, steerGamma: s.steerGamma, trigDead: s.trigDead }); setVolume(s.volume) }
   autoQuality() { const mobile = matchMedia('(pointer:coarse)').matches; const cores = navigator.hardwareConcurrency || 4; return mobile ? (cores >= 8 ? 'medium' : 'low') : cores >= 8 ? 'high' : 'medium' }
   navRoot() { return this.session?.pauseEl || $('#modal') || $('#sheet') || $('#app') }
-  back() { if (this.session?.paused) return this.session.pause(false); if ($('#modal')) return this.closeModal(); if (this.sheet) { this.closeSheet(); return } }
+  back() { if (this.session?.paused) return this.session.pauseBack(); if ($('#modal')) return this.closeModal(); if (this.sheet) { this.closeSheet(); return } }
   cycleTab(d) { if (this.session || $('#modal') || this.sheet) return; const i = TABS.findIndex(t => t[0] === this.tab); this.tab = TABS[(i + d + TABS.length) % TABS.length][0]; this.renderNav(); this.renderView(); setTimeout(() => this.focusFirst(), 20) }
   focusFirst() { const r = this.navRoot(); const f = r && this.nav.focusables(r).find(el => !el.closest('.top')); if (f && document.body.classList.contains('gp-nav')) f.focus() }
   /* ---------- chrome ---------- */
@@ -157,15 +158,28 @@ export class App {
         <div class="dl"><div><small>${tx('Length')}</small><b>${dec(t.officialM / 1000, 3)} ${tx('km')}</b></div><div><small>${tx('Elevation change')}</small><b>${t.estimated ? '≈' : ''}${t.elev} ${tx('m')}</b></div><div><small>${tx('Steepest')}</small><b>${t.grade}%</b></div><div><small>${tx('Your best')}</small><b>${best ? fmtTime(best.t) : '–'}</b></div></div>
         ${best ? `<small class="muted">${tx('Record holder: {car}', { car: esc(best.name) })}</small>` : ''}
         <button class="btn primary" data-a="pickCar:${t.id}">${tx('Drive here')}</button></article>` };
-    return `<div class="sect-h"><div><small>${tx('Real layouts and real elevation')}</small><h2>${tx('Tracks')}</h2></div></div><div class="grid">${this.tracks.map(card).join('')}</div>
+    return `<div class="sect-h"><div><small>${tx('Real layouts and real elevation')}</small><h2>${tx('Tracks')}</h2></div></div><div class="grid">${(this.cities || []).map(c => this.cityCard(c)).join('')}${this.tracks.map(card).join('')}</div>
 `;
   }
+  cityName(c) { return LANG === 'bg' ? (c.id === 'sofia' ? 'София' : c.name) : c.name }
+  cityCard(c) {
+    const chs = c.challenges.map(ch => { const r = this.store.trackRecords(c.id + ':' + ch.id)[0]; return `<button class="chbtn" data-a="pickCar:${c.id}~${ch.id}"><span><b>${esc(LANG === 'bg' ? ch.bg : ch.en)}</b><small>${dec(ch.km, 1)} ${tx('km')}</small></span><small>${r ? fmtTime(r.t) : '–'}</small></button>` }).join('');
+    return `<article class="card trkcard citycard"><div class="spread"><div><small>${tx('Bulgaria')} · ${tx('Free roam')}</small><h3>${esc(this.cityName(c))}</h3></div><span class="tag y">${tx('New')}</span></div>
+      <div class="cityin"><div class="citybox"><img src="city/${c.id}/preview.svg" alt="${esc(tx('Map of {city}', { city: this.cityName(c) }))}" loading="lazy" width="300" height="320"></div>
+      <div class="citytxt"><p class="muted">${tx('All of Sofia inside the Ring Road, built from OpenStreetMap: drive anywhere, take on timed challenges between landmarks, or set a destination and follow the navigation.')}</p>
+        <div class="dl"><div><small>${tx('Area')}</small><b>${fn(c.km2)} ${tx('km²')}</b></div><div><small>${tx('Streets')}</small><b>${fn(c.streetKm)} ${tx('km')}</b></div><div><small>${tx('Buildings')}</small><b>${fn(c.buildings)}</b></div><div><small>${tx('Challenges')}</small><b>${c.challenges.length}</b></div></div>
+        <button class="btn primary" data-a="pickCar:${c.id}">${tx('Free roam in {city}', { city: this.cityName(c) })}</button>
+        <small class="lbl">${tx('Challenges')}</small><div class="chlist">${chs}</div></div></div></article>`;
+  }
   viewRecords() {
+    const cityRows = (this.cities || []).map(c => { const rows = c.challenges.map(ch => ({ ch, r: this.store.trackRecords(c.id + ':' + ch.id)[0] })).filter(x => x.r);
+      return `<section class="card"><div class="spread"><h3>${esc(this.cityName(c))} · ${tx('Challenges')}</h3>${rows.length ? `<button class="btn sm ghost" data-a="clearCity:${c.id}">${tx('Clear')}</button>` : ''}</div>
+        ${rows.length ? `<div class="tbl"><table><thead><tr><th>${tx('Challenge')}</th><th>${tx('Car')}</th><th class="n">${tx('Time')}</th></tr></thead><tbody>${rows.map(({ ch, r }) => `<tr><td>${esc(LANG === 'bg' ? ch.bg : ch.en)}</td><td><span class="dot" style="background:${r.color}"></span>${esc(r.name)}</td><td class="n"><b>${fmtTime(r.t)}</b></td></tr>`).join('')}</tbody></table></div>` : `<p class="muted">${tx('No times yet.')}</p>`}</section>` }).join('');
     const rows = this.tracks.map(t => { const recs = this.store.trackRecords(t.id), g = this.store.ghost(t.id);
       return `<section class="card"><div class="spread"><h3>${esc(t.name)}</h3>${recs.length ? `<button class="btn sm ghost" data-a="clearRec:${t.id}">${tx('Clear')}</button>` : ''}</div>
         ${recs.length ? `<div class="tbl"><table><thead><tr><th>#</th><th>${tx('Car')}</th><th class="n">${tx('Lap')}</th><th class="n">S1</th><th class="n">S2</th><th class="n">S3</th></tr></thead><tbody>${recs.map((r, i) => `<tr><td>${i + 1}</td><td><span class="dot" style="background:${r.color}"></span>${esc(r.name)}</td><td class="n"><b>${fmtTime(r.t)}</b></td>${(r.sec || []).map(v => `<td class="n">${v.toFixed(2)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : `<p class="muted">${tx('No laps yet.')}</p>`}
         ${g ? `<small class="muted">${tx('Ghost: {name}, {t}', { name: esc(g.name), t: fmtTime(g.t) })}</small>` : ''}</section>` }).join('');
-    return `<div class="sect-h"><div><small>${tx('Best valid lap per car')}</small><h2>${tx('Records')}</h2></div></div>${rows}`;
+    return `<div class="sect-h"><div><small>${tx('Best valid lap per car')}</small><h2>${tx('Records')}</h2></div></div>${cityRows}${rows}`;
   }
   viewSettings() {
     const s = this.store.settings, I = this.input, chips = (k, opts) => `<div class="chips">${opts.map(([v, l]) => `<button class="chip" data-a="set:${k}:${v}" aria-pressed="${String(s[k]) === String(v)}">${l}</button>`).join('')}</div>`;
@@ -196,7 +210,8 @@ export class App {
         <textarea id="impcode" rows="3" class="code" placeholder="${tx('Paste code')}"></textarea>
         <div class="row"><button class="btn" data-a="importCode">${tx('Import')}</button><button class="btn ghost" data-a="exportCode">${tx('Copy garage code')}</button></div><span id="impmsg" class="small"></span>
         <h3>${tx('Data & credits')}</h3>
-        <p class="muted small">${tx('Track geometry © OpenStreetMap contributors (ODbL) via Open Racetrack DB. Terrain: Mapzen Terrain Tiles (USGS, NOAA, Copernicus EU-DEM). Track widths and start lines: TUMFTM racetrack-database (LGPL-3.0). 3D engine: three.js (MIT). Parts and car shapes from MotorWorks Tycoon.')}</p></section>
+        <p class="muted small">${tx('Track geometry © OpenStreetMap contributors (ODbL) via Open Racetrack DB. Terrain: Mapzen Terrain Tiles (USGS, NOAA, Copernicus EU-DEM). Track widths and start lines: TUMFTM racetrack-database (LGPL-3.0). 3D engine: three.js (MIT). Parts and car shapes from MotorWorks Tycoon.')}</p>
+        <p class="muted small">${tx('Sofia: map data © OpenStreetMap contributors (ODbL). Elevation: Viewfinder Panoramas 3″ DEM by Jonathan de Ferranti, based on SRTM.')}</p></section>
     </div>`;
   }
   liveControls() {
@@ -378,15 +393,21 @@ export class App {
     const c = this.store.car(carId);
     this.modal(`<small>${tx('Choose a circuit for')}</small><h2>${esc(c.mname)} ${esc(c.trim)}</h2><div class="pickgrid">${this.tracks.map(t => { const r = this.store.record(t.id, c.id); return `<button class="pick" data-a="go:${t.id}:${c.id}">${trackSVG(t, 'trkmini')}<b>${esc(t.short)}</b><small>${r ? fmtTime(r.t) : dec(t.officialM / 1000, 1) + ' ' + tx('km')}</small></button>` }).join('')}</div>`, [[tx('Cancel'), 'close']], true);
   }
+  placeMeta(id) {
+    const [cid, ch] = id.split('~'), city = (this.cities || []).find(c => c.id === cid);
+    if (city) { const c = ch && city.challenges.find(x => x.id === ch); return { id, city, ch: c, name: c ? (LANG === 'bg' ? c.bg : c.en) : this.cityName(city), key: c ? city.id + ':' + c.id : null } }
+    return this.tracks.find(x => x.id === id);
+  }
   pickCar(trackId) {
-    const t = this.tracks.find(x => x.id === trackId);
+    const t = this.placeMeta(trackId);
     if (!this.store.cars.length) return this.modal(`<small>${esc(t.name)}</small><h2>${tx('No cars yet')}</h2><p class="muted">${this.store.engines.length ? tx('Design a car first, then bring it here.') : tx('Start with an engine: pick its layout, size and technology. Then build a car around it.')}</p>`, [[tx('Cancel'), 'close'], this.store.engines.length ? [tx('Design car'), 'newCar', 1] : [tx('Design engine'), 'newEngine', 1]]);
-    this.modal(`<small>${esc(t.name)}</small><h2>${tx('Choose your car')}</h2><div class="pickgrid cars">${this.store.cars.slice().reverse().map(c => { const r = this.store.record(t.id, c.id); return `<button class="pick" data-a="go:${t.id}:${c.id}">${carSVG(c.body, c.color, c.mname)}<b>${esc(c.mname)} ${esc(c.trim)}</b><small>${r ? fmtTime(r.t) : tx('{v} hp', { v: fn(engStats(this.store.engine(c.eng) || {}).hp || 0) })}</small></button>` }).join('')}</div>`, [[tx('Cancel'), 'close']], true);
+    this.modal(`<small>${esc(t.name)}</small><h2>${tx('Choose your car')}</h2><div class="pickgrid cars">${this.store.cars.slice().reverse().map(c => { const r = t.city ? (t.key ? this.store.record(t.key, c.id) : null) : this.store.record(t.id, c.id); return `<button class="pick" data-a="go:${t.id}:${c.id}">${carSVG(c.body, c.color, c.mname)}<b>${esc(c.mname)} ${esc(c.trim)}</b><small>${r ? fmtTime(r.t) : tx('{v} hp', { v: fn(engStats(this.store.engine(c.eng) || {}).hp || 0) })}</small></button>` }).join('')}</div>`, [[tx('Cancel'), 'close']], true);
   }
   async drive(trackId, carId, mode) {
-    const t = this.tracks.find(x => x.id === trackId), c = this.store.car(carId), e = c && this.store.engine(c.eng);
+    const t = this.placeMeta(trackId), c = this.store.car(carId), e = c && this.store.engine(c.eng);
     if (!t || !c || !e) return;
     this.closeModal(); this.closeSheet(); audioCtx();
+    if (t.city) { const { CitySession } = await import('./citydrive.js'); this.session = new CitySession(this, { cityId: t.city.id, challenge: t.ch?.id, car: c, engine: e, number: (this.store.cars.indexOf(c) % 98) + 1 }); return this.session.start() }
     this.session = new DriveSession(this, { trackMeta: t, car: c, engine: e, mode, number: (this.store.cars.indexOf(c) % 98) + 1 });
     await this.session.start();
   }
@@ -422,6 +443,8 @@ export class App {
       case 'paint': d.color = '#' + x; this.renderSheet(true); break;
       case 'saveCar': case 'saveDrive': { const c = { ...d, id: d.id || this.store.id('c') }; this.store.putCar(c); this.closeSheet(); this.tab = 'garage'; this.renderNav(); this.renderView(); if (k === 'saveDrive') this.pickTrack(c.id); else this.toast(tx('{name} saved.', { name: c.mname })); break }
       case 'pickTrack': this.pickTrack(x); break;
+      case 'clearCity': this.modal(`<h3>${tx('Clear the challenge times?')}</h3><p>${tx('All best times for this city are removed.')}</p>`, [[tx('Keep them'), 'close'], [tx('Clear'), 'doClearCity:' + x, 1]]); break;
+      case 'doClearCity': { this.closeModal(); const c = (this.cities || []).find(q => q.id === x); if (c) { for (const ch of c.challenges) this.store.clearRecords(c.id + ':' + ch.id); this.renderView() } break }
       case 'pickCar': this.pickCar(x); break;
       case 'go': this.drive(x, y); break;
       case 'clearRec': this.modal(`<h3>${tx('Clear the records for this track?')}</h3><p>${tx('Lap times and the ghost are removed.')}</p>`, [[tx('Keep them'), 'close'], [tx('Clear'), 'doClearRec:' + x, 1]]); break;

@@ -3,16 +3,16 @@ import * as THREE from './vendor/three.module.min.js';
 import { KERB_W, VERGE_W } from './track.js';
 
 const smooth = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
-function rng(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 1e7) / 1e7 } }
-function vnoise(seed) {
+export function rng(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 1e7) / 1e7 } }
+export function vnoise(seed) {
   const h = (x, y) => { let n = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453; return n - Math.floor(n) };
   return (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
     return (h(xi, yi) * (1 - u) + h(xi + 1, yi) * u) * (1 - v) + (h(xi, yi + 1) * (1 - u) + h(xi + 1, yi + 1) * u) * v };
 }
-function canvas(w, h) { const c = (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h }); return [c, c.getContext('2d')] }
-function texFrom(c, rep = true, srgb = true) { const t = new THREE.CanvasTexture(c); if (rep) t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.needsUpdate = true; return t }
+export function canvas(w, h) { const c = (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h }); return [c, c.getContext('2d')] }
+export function texFrom(c, rep = true, srgb = true) { const t = new THREE.CanvasTexture(c); if (rep) t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.needsUpdate = true; return t }
 
-function makeTextures() {
+export function makeTextures() {
   const r = rng(7), T = {};
   { const [c, g] = canvas(512, 512); g.fillStyle = '#5a5d60'; g.fillRect(0, 0, 512, 512);
     const id = g.getImageData(0, 0, 512, 512), d = id.data;
@@ -28,6 +28,51 @@ function makeTextures() {
   { const [c, g] = canvas(8, 64); const gr = g.createLinearGradient(0, 0, 0, 64); gr.addColorStop(0, '#9aa1a5'); gr.addColorStop(.25, '#dfe4e6'); gr.addColorStop(.5, '#8f969a'); gr.addColorStop(.75, '#d5dadc'); gr.addColorStop(1, '#7f8589'); g.fillStyle = gr; g.fillRect(0, 0, 8, 64); T.armco = texFrom(c) }
   return T;
 }
+
+
+/* low-poly conifer and broadleaf trees (vertex-coloured, one geometry each, for instancing) */
+let TREES = null;
+export function treeGeometries() {
+  if (TREES) return TREES;
+  const mk = (parts) => {
+    const geos = parts.map(([geo, color]) => { const g = geo.toNonIndexed(); const n = g.attributes.position.count, c = new Float32Array(n * 3); const cc = new THREE.Color(color); for (let k = 0; k < n; k++) { c[k * 3] = cc.r; c[k * 3 + 1] = cc.g; c[k * 3 + 2] = cc.b } g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.deleteAttribute('uv'); return g });
+    let total = 0; for (const g of geos) total += g.attributes.position.count;
+    const P = new Float32Array(total * 3), N = new Float32Array(total * 3), Cc = new Float32Array(total * 3); let o = 0;
+    for (const g of geos) { g.computeVertexNormals(); P.set(g.attributes.position.array, o * 3); N.set(g.attributes.normal.array, o * 3); Cc.set(g.attributes.color.array, o * 3); o += g.attributes.position.count }
+    const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(P, 3)); out.setAttribute('normal', new THREE.BufferAttribute(N, 3)); out.setAttribute('color', new THREE.BufferAttribute(Cc, 3)); return out;
+  };
+  const trunk = new THREE.CylinderGeometry(.18, .26, 4, 5).translate(0, 2, 0);
+  const conGeo = mk([[trunk, 0x4a3a2a], [new THREE.ConeGeometry(2.6, 9, 7).translate(0, 7.2, 0), 0x2f4f2a], [new THREE.ConeGeometry(2.0, 6.5, 7).translate(0, 11.2, 0), 0x34572d]]);
+  const decGeo = mk([[trunk.clone().scale(1.2, 1, 1.2), 0x54402d], [new THREE.IcosahedronGeometry(3.6, 0).scale(1, .85, 1).translate(0, 7, 0), 0x46692f], [new THREE.IcosahedronGeometry(2.6, 0).translate(1.5, 9, .6), 0x507436]]);
+  return TREES = { conGeo, decGeo };
+}
+
+/* gradient sky with drifting clouds and a sun; th = { sun: [elevation, azimuth], sky, fog } */
+export function makeSky(th) {
+  const el = th.sun[0] * 1.1, az = th.sun[1] * Math.PI * 2;
+  const sunDir = new THREE.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).normalize();
+  const top = new THREE.Color(th.sky).multiplyScalar(.82), hor = new THREE.Color(th.fog);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: top }, hor: { value: hor }, sun: { value: sunDir } },
+    vertexShader: 'varying vec3 vd; void main(){ vd = normalize(position); vec4 p = modelViewMatrix*vec4(position,1.); gl_Position = projectionMatrix*p; gl_Position.z = gl_Position.w; }',
+    fragmentShader: `uniform vec3 top; uniform vec3 hor; uniform vec3 sun; varying vec3 vd;
+      float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+      float n(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
+      void main(){ vec3 d = normalize(vd); float y = max(d.y, 0.);
+        vec3 c = mix(hor, top, pow(y, .55));
+        vec2 uv = d.xz / max(d.y, .08) * 1.6;
+        float cl = n(uv) * .55 + n(uv * 2.3 + 7.) * .3 + n(uv * 5.1) * .15;
+        cl = smoothstep(.55, .85, cl) * smoothstep(0., .25, d.y);
+        c = mix(c, vec3(.97), cl * .65);
+        float s = max(dot(d, sun), 0.);
+        c += vec3(1., .9, .7) * (pow(s, 900.) * 3. + pow(s, 12.) * .18);
+        if (d.y < 0.) c = hor;
+        gl_FragColor = vec4(c, 1.); }`,
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(20000, 32, 16), mat); sky.frustumCulled = false; sky.renderOrder = -1;
+  return { sky, sunDir, fogColor: hor };
+  }
 
 const BRANDS = [['MOTORWORKS', '#f2b705', '#18201b'], ['RHEINWERK', '#3a6ea5', '#fff'], ['HOSHINO', '#c2412d', '#fff'], ['CASTELLAN', '#8e3b8a', '#fff'], ['LIBERTY', '#2f8a7d', '#fff'], ['MOREAU', '#b0763a', '#fff'], ['NORDVIK', '#5a6f8a', '#fff'], ['HANBIT', '#6b8e23', '#fff']];
 function boardTex(text, bg, fg) { const [c, g] = canvas(512, 96); g.fillStyle = bg; g.fillRect(0, 0, 512, 96); g.fillStyle = fg; g.font = 'bold 64px Oswald, Impact, Arial Narrow, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, 52); return texFrom(c, false) }
@@ -293,16 +338,7 @@ export class World {
     const [x0, x1, z0, z1] = this.tb, cnt = Math.round((x1 - x0) * (z1 - z0) / 900 * dens * .9);
     for (let k = 0; k < cnt; k++) { const x = x0 + r() * (x1 - x0), z = z0 + r() * (z1 - z0); if (r() < this.forestField(x, z) * .95) place(x, z) }
     // geometry
-    const mk = (parts) => {
-      const geos = parts.map(([geo, color]) => { const g = geo.toNonIndexed(); const n = g.attributes.position.count, c = new Float32Array(n * 3); const cc = new THREE.Color(color); for (let k = 0; k < n; k++) { c[k * 3] = cc.r; c[k * 3 + 1] = cc.g; c[k * 3 + 2] = cc.b } g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.deleteAttribute('uv'); return g });
-      let total = 0; for (const g of geos) total += g.attributes.position.count;
-      const P = new Float32Array(total * 3), N = new Float32Array(total * 3), Cc = new Float32Array(total * 3); let o = 0;
-      for (const g of geos) { g.computeVertexNormals(); P.set(g.attributes.position.array, o * 3); N.set(g.attributes.normal.array, o * 3); Cc.set(g.attributes.color.array, o * 3); o += g.attributes.position.count }
-      const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(P, 3)); out.setAttribute('normal', new THREE.BufferAttribute(N, 3)); out.setAttribute('color', new THREE.BufferAttribute(Cc, 3)); return out;
-    };
-    const trunk = new THREE.CylinderGeometry(.18, .26, 4, 5).translate(0, 2, 0);
-    const conGeo = mk([[trunk, 0x4a3a2a], [new THREE.ConeGeometry(2.6, 9, 7).translate(0, 7.2, 0), 0x2f4f2a], [new THREE.ConeGeometry(2.0, 6.5, 7).translate(0, 11.2, 0), 0x34572d]]);
-    const decGeo = mk([[trunk.clone().scale(1.2, 1, 1.2), 0x54402d], [new THREE.IcosahedronGeometry(3.6, 0).scale(1, .85, 1).translate(0, 7, 0), 0x46692f], [new THREE.IcosahedronGeometry(2.6, 0).translate(1.5, 9, .6), 0x507436]]);
+    const { conGeo, decGeo } = treeGeometries();
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     const TILE = 700, M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), Pv = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
     for (const [list, geo, tall] of [[con, conGeo, 1.6], [dec, decGeo, 1.15]]) {
@@ -443,30 +479,7 @@ export class World {
     }
   }
   buildSky() {
-    const th = this.th, el = th.sun[0] * 1.1, az = th.sun[1] * Math.PI * 2;
-    this.sunDir = new THREE.Vector3(Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)).normalize();
-    const top = new THREE.Color(th.sky).multiplyScalar(.82), hor = new THREE.Color(th.fog);
-    const mat = new THREE.ShaderMaterial({
-      side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: { top: { value: top }, hor: { value: hor }, sun: { value: this.sunDir } },
-      vertexShader: 'varying vec3 vd; void main(){ vd = normalize(position); vec4 p = modelViewMatrix*vec4(position,1.); gl_Position = projectionMatrix*p; gl_Position.z = gl_Position.w; }',
-      fragmentShader: `uniform vec3 top; uniform vec3 hor; uniform vec3 sun; varying vec3 vd;
-        float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
-        float n(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
-        void main(){ vec3 d = normalize(vd); float y = max(d.y, 0.);
-          vec3 c = mix(hor, top, pow(y, .55));
-          vec2 uv = d.xz / max(d.y, .08) * 1.6;
-          float cl = n(uv) * .55 + n(uv * 2.3 + 7.) * .3 + n(uv * 5.1) * .15;
-          cl = smoothstep(.55, .85, cl) * smoothstep(0., .25, d.y);
-          c = mix(c, vec3(.97), cl * .65);
-          float s = max(dot(d, sun), 0.);
-          c += vec3(1., .9, .7) * (pow(s, 900.) * 3. + pow(s, 12.) * .18);
-          if (d.y < 0.) c = hor;
-          gl_FragColor = vec4(c, 1.); }`,
-    });
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(20000, 32, 16), mat); sky.frustumCulled = false; sky.renderOrder = -1;
-    this.sky = sky; this.group.add(sky);
-    this.fogColor = hor;
+    const k = makeSky(this.th); this.sunDir = k.sunDir; this.sky = k.sky; this.fogColor = k.fogColor; this.group.add(k.sky);
   }
   envScene() {
     const s = new THREE.Scene(); const m = this.sky.material.clone(); s.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), m));

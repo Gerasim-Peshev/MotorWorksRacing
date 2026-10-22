@@ -252,6 +252,22 @@ html.driving,html.driving body{overflow:hidden;height:100%}
 .pause{position:absolute;inset:0;background:rgba(8,10,9,.72);display:grid;place-items:center;z-index:10;padding:16px;backdrop-filter:blur(3px)}
 .pause-in{background:var(--surface);color:var(--ink);border:2px solid var(--ink);border-radius:14px;max-width:620px;width:100%;padding:20px;display:flex;flex-direction:column;gap:12px;max-height:92vh;overflow:auto}
 .pause-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.citycard{grid-column:1/-1}
+.cityin{display:grid;grid-template-columns:minmax(0,300px) 1fr;gap:16px;align-items:start}
+.citytxt{display:flex;flex-direction:column;gap:10px;min-width:0}.citytxt p{margin:0}
+@media (max-width:760px){.cityin{grid-template-columns:1fr}}
+.citybox{background:var(--sunk);border-radius:8px;padding:10px;display:grid;place-items:center}.citybox img{width:100%;max-width:300px;height:auto}
+.chlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
+.chbtn{display:flex;justify-content:space-between;gap:8px;align-items:center;text-align:left;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;min-height:44px}
+.chbtn:hover{border-color:var(--ink)}.chbtn span{display:flex;flex-direction:column;min-width:0}.chbtn b{font-size:.92rem}.chbtn small{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hud-tl.city{min-width:220px;max-width:min(46vw,340px)}
+.hud-street{font-size:1.05rem;letter-spacing:.03em;margin-bottom:4px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.2em}
+.hud-lap b.good{color:#62e08d}
+.hud-nav{left:50%;top:calc(max(10px,env(safe-area-inset-top)) + 46px);transform:translateX(-50%);display:none;align-items:center;gap:10px;background:rgba(12,16,14,.62);padding:4px 14px 4px 10px;border-radius:20px;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.hud-nav.on{display:flex}
+.hud-nav i{display:inline-block;font-style:normal;color:#ffc21a;font-size:1.5rem;line-height:1}
+.ch-btn{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:2px}.ch-btn small{font-weight:400;opacity:.75}
+@media (max-width:700px){.hud-tl.city{min-width:0;max-width:44vw}.hud-street{font-size:.9rem}.hud-nav{font-size:1rem}}
 .pause-vol{grid-column:1/-1;padding:4px 2px 0}.pause-vol b{font-variant-numeric:tabular-nums}
 .card.empty{max-width:560px}.card.empty p{margin:0}
 .touch{position:absolute;inset:0;pointer-events:none}

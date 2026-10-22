@@ -128,7 +128,7 @@ export class CarSim {
     const fx = -sp, fz = -cp, lx = -cp, lz = sp;
     let u = this.vx * fx + this.vz * fz, w = this.vx * lx + this.vz * lz;
     // ---- locate on track
-    const loc = track.locate(this.x, this.z, this.hint, this.loc); this.hint = loc.i;
+    const loc = track.locate(this.x, this.z, this.hint, this.loc, this.vx, this.vz, this.y); this.hint = loc.i;
     // ---- inputs
     let thr = clamp(inp.throttle || 0, 0, 1), brk = clamp(inp.brake || 0, 0, 1);
     const steerIn = clamp(inp.steer || 0, -1, 1);            // +1 = right
@@ -190,7 +190,7 @@ export class CarSim {
     for (let k = 0; k < 4; k++) {
       const wx = fx * pf[k] + lx * pl[k], wz = fz * pf[k] + lz * pl[k];
       const d = loc.d + wx * nX + wz * nZ;
-      const sf = track.surface(loc.i, d); this.surf[k] = sf;
+      const sf = track.surfaceAt ? track.surfaceAt(this.x + wx, this.z + wz, this.y) : track.surface(loc.i, d); this.surf[k] = sf;
       dragK += sf.drag / 4; bump = Math.max(bump, sf.bump); if (sf.id >= 4) off++;
     }
     this.bump = bump; this.offTrack = off;
@@ -378,29 +378,32 @@ export class CarSim {
     const kf = Math.min(1, dt / s.tau);
     this.axf += (clamp(ab, -25, 25) - this.axf) * kf; this.ayf += (clamp(al, -30, 30) - this.ayf) * kf;
     this.u = u; this.w = w;
-    // ---- barriers
+    // ---- barriers (a city map handles its own walls, buildings and trees)
     this.impact = 0;
+    if (track.collide) { track.collide(this); return }
     const l2 = track.locate(this.x, this.z, this.hint, this.loc2 || (this.loc2 = {}));
     const side = l2.d >= 0, bd = track.barrier(l2.i, side) - s.W / 2 - .15;
-    if (Math.abs(l2.d) > bd) {
-      const nxw = l2.fz * (side ? 1 : -1), nzw = -l2.fx * (side ? 1 : -1);   // outward normal
-      const pen = Math.abs(l2.d) - bd;
-      this.x -= nxw * pen; this.z -= nzw * pen;
-      const vn = this.vx * nxw + this.vz * nzw;
-      if (vn > 0) {
-        const e = .22;
-        this.vx -= (1 + e) * vn * nxw; this.vz -= (1 + e) * vn * nzw;
-        const fr2 = clamp(1 - vn * .035, .55, .985);
-        this.vx *= fr2; this.vz *= fr2;
-        this.r *= .55;
-        // turn the car parallel to the wall a little
-        const head = Math.atan2(-(l2.fx), -(l2.fz));
-        let dpsi = head - this.psi; dpsi = Math.atan2(Math.sin(dpsi), Math.cos(dpsi));
-        if (Math.abs(dpsi) < Math.PI / 2) this.r += clamp(dpsi, -1, 1) * Math.min(vn, 10) * .25;
-        this.impact = vn;
-      } else {
-        const fr2 = .995; this.vx *= fr2; this.vz *= fr2;
-      }
+    if (Math.abs(l2.d) > bd) this.hitWall(l2.fz * (side ? 1 : -1), -l2.fx * (side ? 1 : -1), Math.abs(l2.d) - bd, l2.fx, l2.fz);
+  }
+  /* push the car out of a wall. (nx,nz): unit normal pointing from the car into the wall, pen: penetration (m), (tx,tz): wall direction */
+  hitWall(nx, nz, pen, tx, tz) {
+    this.x -= nx * pen; this.z -= nz * pen;
+    const vn = this.vx * nx + this.vz * nz;
+    if (vn > 0) {
+      const e = .22;
+      this.vx -= (1 + e) * vn * nx; this.vz -= (1 + e) * vn * nz;
+      const fr2 = clamp(1 - vn * .035, .55, .985);
+      this.vx *= fr2; this.vz *= fr2;
+      this.r *= .55;
+      // turn the car parallel to the wall a little
+      const fx = -Math.sin(this.psi), fz = -Math.cos(this.psi);
+      if (tx * fx + tz * fz < 0) { tx = -tx; tz = -tz }
+      const head = Math.atan2(-tx, -tz);
+      let dpsi = head - this.psi; dpsi = Math.atan2(Math.sin(dpsi), Math.cos(dpsi));
+      if (Math.abs(dpsi) < Math.PI / 2) this.r += clamp(dpsi, -1, 1) * Math.min(vn, 10) * .25;
+      this.impact = Math.max(this.impact, vn);
+    } else {
+      const fr2 = .995; this.vx *= fr2; this.vz *= fr2;
     }
   }
   beginShift(g) {
