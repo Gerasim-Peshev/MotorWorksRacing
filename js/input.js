@@ -104,7 +104,7 @@ export class Input {
     thr = Math.max(thr, this.kbThr); brk = Math.max(brk, this.kbBrk);
     if (K.has('Space')) hb = true;
     // touch controls
-    const T = this.touch; if (T.active) { if (Math.abs(T.steer) > Math.abs(steer)) steer = T.steer; thr = Math.max(thr, T.throttle); brk = Math.max(brk, T.brake) }
+    const T = this.touch; if (T.active) { if (Math.abs(T.steer) > Math.abs(steer)) steer = T.steer; thr = Math.max(thr, T.throttle); brk = Math.max(brk, T.brake); hb = hb || !!T.handbrake }
     Object.assign(this.state, { steer, throttle: thr, brake: brk, handbrake: hb });
     return this.state;
   }

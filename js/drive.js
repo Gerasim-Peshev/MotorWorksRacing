@@ -5,6 +5,7 @@ import { World } from './scene.js';
 import { buildCar, disposeCar } from './carmodel.js';
 import { buildSpec, CarSim, DT } from './physics.js';
 import { LAYOUTS } from './parts.js';
+import { TyreFX } from './fx.js';
 import { AutoPilot } from './ai.js';
 import { CarAudio, audioCtx, previewTone } from './audio.js';
 import { tx, fmtTime } from './i18n.js';
@@ -93,6 +94,7 @@ export class DriveSession {
     this.model = buildCar(o.car, { number: o.number || 7, cyl: lay.cyl, ev: lay.ev });
     this.model.group.traverse(m => { if (m.isMesh) m.castShadow = true });
     this.scene.add(this.model.group);
+    this.fx = new TyreFX(this.scene, this.q);
     this.ap = null; this.autopilot = o.mode === 'autopilot';
     this.canAuto = (o.car.equip || []).includes('selfdrive') || o.mode === 'autopilot';
     this.opts = {
@@ -178,7 +180,7 @@ export class DriveSession {
   buildTouch() {
     const T = this.input.touch; T.active = true;
     const pad = el('div', 'touch', `<div class="t-steer" id="t-steer"><i></i><span>◀ ▶</span></div>
-      <div class="t-gear"><button id="t-up">+</button><button id="t-dn">−</button></div>
+      <div class="t-gear"><button id="t-hb" class="hb" aria-label="${tx('Handbrake')}">HB</button><button id="t-up">+</button><button id="t-dn">−</button></div>
       <div class="t-pedals"><div class="t-brk" id="t-brk">${tx('Brake')}</div><div class="t-thr" id="t-thr">${tx('Gas')}</div></div>`);
     this.root.append(pad);
     const steerEl = pad.querySelector('#t-steer'); let sid = null, sx0 = 0;
@@ -193,6 +195,9 @@ export class DriveSession {
     pedal('#t-thr', 'throttle'); pedal('#t-brk', 'brake');
     pad.querySelector('#t-up').addEventListener('touchstart', e => { this.touchShift = 1; e.preventDefault() }, { passive: false });
     pad.querySelector('#t-dn').addEventListener('touchstart', e => { this.touchShift = -1; e.preventDefault() }, { passive: false });
+    const hb = pad.querySelector('#t-hb'), hbOff = () => { T.handbrake = false; hb.classList.remove('on') };
+    hb.addEventListener('touchstart', e => { T.handbrake = true; hb.classList.add('on'); e.preventDefault() }, { passive: false });
+    hb.addEventListener('touchend', hbOff); hb.addEventListener('touchcancel', hbOff);
   }
   msg(text, secs = 0) { const m = this.$ && this.$('h-msg'); if (!m) return; m.textContent = text; m.classList.toggle('on', !!text); clearTimeout(this.msgT); if (secs) this.msgT = setTimeout(() => { m.textContent = ''; m.classList.remove('on') }, secs * 1000) }
   speedText(v) { return Math.round(this.settings.units === 'mph' ? v * 2.23694 : v * 3.6) }
@@ -349,6 +354,7 @@ export class DriveSession {
     const W = this.model.wheelsByPos;
     for (let k = 0; k < 4; k++) for (const w of W[k]) { w.spin.rotation.x = -s.wheelRot[k]; if (w.front) w.steer.rotation.y = s.steer }
     this.model.lights.tail.emissiveIntensity = (this.lastInput?.brake || 0) > .05 && !s.reverse ? 2.6 : .35;
+    if (this.fx) this.fx.update(Math.min(dt, .05), s, this.spec);
     // ghost
     if (this.ghost && this.state === 'running') {
       const f = this.ghost.frames, lt = this.clock - this.lapStart, n = f.length / 5;

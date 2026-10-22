@@ -1,6 +1,6 @@
 /* Garage UI: cars, engines, tracks, records, settings, and the engine & car designers (ported from MotorWorks Tycoon). */
 import * as THREE from './vendor/three.module.min.js';
-import { LAYOUTS, VALVES, FUELS, INJ, SCS, EMATS, BODIES, SHAPES, GEARS, DRIVES, SUSP, INTS, MATS, HEADL, EQUIP, PAINTS, TYRES, BRAKES, GEARINFO,
+import { LAYOUTS, VALVES, FUELS, INJ, SCS, EMATS, BODIES, SHAPES, GEARS, DRIVES, SUSP, INTS, MATS, HEADL, EQUIP, PAINTS, TYRES, BRAKES, GEARINFO, DIFFS, RACKS, diffOf, rackOf,
   engStats, carStats, turboCap, has, availableIn, lockYear, techYear, YEAR_MIN, YEAR_MAX, clamp } from './parts.js';
 import { buildSpec, perfTest, engineCurve } from './physics.js';
 import { buildCar, disposeCar } from './carmodel.js';
@@ -277,9 +277,9 @@ export class App {
   openCar(c) {
     const engs = this.store.engines;
     if (!engs.length) { this.toast(tx('Design an engine first.')); this.tab = 'eng'; this.renderNav(); this.renderView(); return }
-    if (c) this.draft = { ...c, equip: (c.equip || []).slice() };
+    if (c) this.draft = { ...c, equip: (c.equip || []).slice(), diff: diffOf(c), rack: rackOf(c) };
     else { const e = engs[engs.length - 1], year = Math.max(e.year, 1990);
-      this.draft = { id: null, mname: tx('Kestrel'), trim: '', body: 'coupe', eng: e.id, gb: LAYOUTS[e.layout].ev ? 'ev1' : 'm6', dt: 'rwd', lsd: true, susp: 'sport', int: 'standard', mat: 'steel', hl: 'xenon', equip: ['crumple', 'abs', 'airbag', 'pwr'], color: PAINTS[Math.floor(Math.random() * PAINTS.length)][1], cw: null, year, tyre: 'sport', brake: 'vent' } }
+      this.draft = { id: null, mname: tx('Kestrel'), trim: '', body: 'coupe', eng: e.id, gb: LAYOUTS[e.layout].ev ? 'ev1' : 'm6', dt: 'rwd', lsd: true, diff: 'lsd', rack: 'std', susp: 'sport', int: 'standard', mat: 'steel', hl: 'xenon', equip: ['crumple', 'abs', 'airbag', 'pwr'], color: PAINTS[Math.floor(Math.random() * PAINTS.length)][1], cw: null, year, tyre: 'sport', brake: 'vent' } }
     this.fixCar(); this.sheet = 'car'; this.renderSheet();
   }
   fixCar() {
@@ -287,8 +287,9 @@ export class App {
     if (!availableIn(BODIES[d.body], y)) d.body = 'sedan';
     const ev = E && LAYOUTS[E.layout].ev;
     if (ev) d.gb = 'ev1'; else if (GEARS[d.gb].ev || !availableIn(GEARS[d.gb], y)) d.gb = ['m6', 'm5', 'm4'].find(g => availableIn(GEARS[g], y));
-    for (const [k, T] of [['dt', DRIVES], ['susp', SUSP], ['int', INTS], ['mat', MATS], ['hl', HEADL], ['tyre', TYRES], ['brake', BRAKES]]) if (!availableIn(T[d[k]], y)) d[k] = Object.keys(T).find(q => availableIn(T[q], y));
-    if (d.lsd && !has('lsd', y)) d.lsd = false;
+    d.diff = diffOf(d); d.rack = rackOf(d);
+    for (const [k, T] of [['dt', DRIVES], ['susp', SUSP], ['int', INTS], ['mat', MATS], ['hl', HEADL], ['tyre', TYRES], ['brake', BRAKES], ['diff', DIFFS], ['rack', RACKS]]) if (!availableIn(T[d[k]], y)) d[k] = Object.keys(T).find(q => availableIn(T[q], y));
+    d.lsd = d.diff !== 'open';                       // the tycoon's flag, kept in step
     d.equip = d.equip.filter(k => EQUIP[k] && has(EQUIP[k].t, y));
   }
   perfHTML() {
@@ -303,7 +304,7 @@ export class App {
       <small class="muted">${tx('Gear ratios')}: ${ratios}</small>
       <small class="muted">${tx('Figures come from the same physics you drive with, on a flat road.')}</small>`;
   }
-  perfKey() { const d = this.draft, E = this.store.engine(d.eng); return JSON.stringify([d.body, d.gb, d.dt, d.lsd, d.susp, d.int, d.mat, d.equip, d.cw, d.year, d.tyre, d.brake, E]) }
+  perfKey() { const d = this.draft, E = this.store.engine(d.eng); return JSON.stringify([d.body, d.gb, d.dt, d.lsd, d.diff, d.rack, d.susp, d.int, d.mat, d.equip, d.cw, d.year, d.tyre, d.brake, E]) }
   schedulePerf() {
     clearTimeout(this.perfT);
     this.perfT = setTimeout(() => { const d = this.draft, E = this.store.engine(d.eng); if (!d || !E) return; const key = this.perfKey(); try { this.perf = { key, r: perfTest(buildSpec(d, E)) } } catch (e) { console.error(e) } const el = $('#cperf'); if (el) el.innerHTML = this.perfHTML() }, 220);
@@ -321,7 +322,9 @@ export class App {
       <div class="field"><span class="lbl">${tx('Body')}</span>${this.chipRow('body', BODIES, d.body, 'co', y)}</div>
       <div class="field"><span class="lbl">${tx('Engine')}</span>${engChips}${E ? `<small class="muted">${esc(engDesc(E))}</small>` : ''}</div>
       <div class="field"><span class="lbl">${tx('Gearbox')}</span>${this.chipRow('gb', gears, d.gb, 'co', y)}</div>
-      <div class="field"><span class="lbl">${tx('Drive')}</span>${this.chipRow('dt', DRIVES, d.dt, 'co', y)}<div class="chips"><button class="chip" data-a="lsd" aria-pressed="${!!d.lsd}" ${has('lsd', y) ? '' : 'disabled'}>${tx('Limited-slip diff')}${has('lsd', y) ? '' : ` <span class="lk">${techYear('lsd')}</span>`}</button></div></div>
+      <div class="field"><span class="lbl">${tx('Drive')}</span>${this.chipRow('dt', DRIVES, d.dt, 'co', y)}</div>
+      <div class="field"><span class="lbl">${tx('Differential')}</span>${this.chipRow('diff', DIFFS, d.diff, 'co', y)}<small class="muted">${tx(DIFFS[d.diff].d)}</small></div>
+      <div class="field"><span class="lbl">${tx('Steering')}</span>${this.chipRow('rack', RACKS, d.rack, 'co', y)}<small class="muted">${tx(RACKS[d.rack].d)}</small></div>
       <div class="field"><span class="lbl">${tx('Tyres')}</span>${this.chipRow('tyre', TYRES, d.tyre, 'co', y)}<small class="muted">${tx(TYRES[d.tyre].d)}</small></div>
       <div class="field"><span class="lbl">${tx('Brakes')}</span>${this.chipRow('brake', BRAKES, d.brake, 'co', y)}<small class="muted">${tx(BRAKES[d.brake].d)}</small></div>
       <div class="field"><span class="lbl">${tx('Suspension')}</span>${this.chipRow('susp', SUSP, d.susp, 'co', y)}</div>
@@ -446,7 +449,6 @@ export class App {
       case 'co': d[x] = y; this.fixCar(); this.renderSheet(true); break;
       case 'ceng': d.eng = x; this.fixCar(); this.renderSheet(true); break;
       case 'cs': d.equip = d.equip.includes(x) ? d.equip.filter(s => s !== x) : [...d.equip, x]; this.renderSheet(true); break;
-      case 'lsd': d.lsd = !d.lsd; this.renderSheet(true); break;
       case 'paint': d.color = '#' + x; this.renderSheet(true); break;
       case 'saveCar': case 'saveDrive': { const c = { ...d, id: d.id || this.store.id('c') }; this.store.putCar(c); this.closeSheet(); this.tab = 'garage'; this.renderNav(); this.renderView(); if (k === 'saveDrive') this.pickTrack(c.id); else this.toast(tx('{name} saved.', { name: c.mname })); break }
       case 'pickTrack': this.pickTrack(x); break;

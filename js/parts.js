@@ -31,6 +31,19 @@ export const BRAKES = {
   vent:    { n: 'Vented discs',         f: 1.12, w: 4, y: 1975, d: 'Bigger, cooler discs for fast cars.' },
   ceramic: { n: 'Carbon-ceramic discs', f: 1.28, w: -12, y: 2001, d: 'Huge stopping power, light weight.' },
 };
+/* differentials and steering racks (drift parts) */
+export const DIFFS = {
+  open:   { n: 'Open differential', w: 0, d: 'Equal torque to both wheels: the lighter-loaded inside wheel spins first.' },
+  lsd:    { n: 'Limited-slip diff', w: 8, t: 'lsd', d: 'Clutch packs share the drive between the wheels: traction out of corners and slides you can hold.' },
+  welded: { n: 'Welded diff', w: 2, y: 1960, d: 'Both wheels always turn together. The drift favourite, but it scrubs the tyres and pushes in tight, slow turns.' },
+};
+export const RACKS = {
+  std:   { n: 'Standard steering', lock: 1, rate: 0, w: 0, d: 'Normal steering lock and ratio.' },
+  quick: { n: 'Quick rack', lock: 1, rate: 1.6, w: 1, y: 1970, d: 'Fewer turns lock to lock: sharper turn-in and faster corrections.' },
+  angle: { n: 'Drift angle kit', lock: 1.55, rate: 2.4, w: 4, y: 1980, d: 'Modified knuckles for about 55° of steering lock, with a quick rack, to hold big drift angles.' },
+};
+export const diffOf = c => DIFFS[c.diff] ? c.diff : c.lsd ? 'lsd' : 'open';
+export const rackOf = c => RACKS[c.rack] ? c.rack : 'std';
 /* gearbox behaviour */
 const GB = (g, type, shift, eff) => ({ g, type, shift, eff });
 export const GEARINFO = {
@@ -94,10 +107,10 @@ export function carStats(c, E) {
   const eq = (c.equip || []).map(k => EQUIP[k]).filter(Boolean);
   const sumq = f => eq.reduce((a, q) => a + (q[f] || 0), 0);
   const year = c.year || 2000;
-  const w0 = Math.round(B.w * M.w * (1 + .006 * clamp(year - 1970, 0, 60)) + es.w + G.w + D.w + IN.w + SU.w + (c.lsd ? 8 : 0) + sumq('w') + TY.w + BR.w);
+  const w0 = Math.round(B.w * M.w * (1 + .006 * clamp(year - 1970, 0, 60)) + es.w + G.w + D.w + IN.w + SU.w + DIFFS[diffOf(c)].w + RACKS[rackOf(c)].w + sumq('w') + TY.w + BR.w);
   const w = c.cw ? clamp(c.cw, w0 * .5, w0 * 2) : w0;
   const pw = es.hp / (w / 1000);
-  const t = Math.max(1.9, (2.3 + 850 / pw) * G.acc * D.acc * (es.ev ? .85 : 1) * (c.lsd ? .98 : 1));
+  const t = Math.max(1.9, (2.3 + 850 / pw) * G.acc * D.acc * (es.ev ? .85 : 1) * (diffOf(c) !== 'open' ? .98 : 1));
   const top = Math.round(Math.min(B.vmax || 999, 37.7 * Math.cbrt(es.hp) * B.aero * (es.ev ? .92 : 1)));
   return { w, wAuto: w0, hp: es.hp, tq: es.tq, t, top, ev: es.ev, es, pw };
 }

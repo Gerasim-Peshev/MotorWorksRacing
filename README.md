@@ -68,8 +68,18 @@ The garage starts empty: design an engine, build a car around it, then pick a ci
 
 - **Engine**: the tycoon's power, torque, redline and weight formulas build a torque curve (peaky DOHC, flat turbo plateau, low-revving diesel, high-revving rotary, constant-torque EV). Turbos have real lag that grows with boost and turbo count.
 - **Gearbox**: ratios are calculated from the engine's power band and the car's top speed. Manuals cut drive while shifting, automatics kick down, dual-clutch boxes shift in 50–80 ms, CVTs hold the power peak.
-- **Chassis**: body size, weight and weight distribution come from the tycoon's body shapes; the suspension sets roll stiffness and grip; FWD, RWD, AWD and the limited-slip diff change how power reaches the road.
+- **Chassis**: body size, weight and weight distribution come from the tycoon's body shapes. The suspension sets roll stiffness and grip, and FWD, RWD and AWD change how power reaches the road.
 - **New parts for driving**: tyres (eco to racing slicks) and brakes (drums to carbon-ceramics).
+- **Tyres and drivetrain**: every wheel spins on its own with real inertia, and the engine's inertia is felt through the gearbox. Tyres use a combined-slip model: a wheel that spins or locks loses side grip, so power oversteer, lift-off oversteer and locked-wheel slides all come out of the physics. The differential matters:
+  - an open diff spins the unloaded inside wheel;
+  - a limited-slip diff shares the drive;
+  - a welded diff locks both wheels together.
+- **Drifting**: hold the handbrake to lock the rear wheels with the clutch in. The engine revs freely, and letting go dumps the clutch for a kick. Steer the slide with the throttle.
+  - With **Steering assist** on, the helper lines the front wheels up with the direction of travel during a slide. That catches it for you.
+  - With the assist off, the stick's range grows by the slide angle, so you can countersteer yourself.
+  - Turn **Stability control** off in the pause menu to drift; it is built to stop slides.
+  - Sliding tyres leave skid marks and smoke, or dust off the road.
+- **Drift parts**: welded diff, quick steering rack, a drift angle kit (about 55° of lock) and drift coilovers that shift load transfer to the rear.
 - **ABS and stability control** only work if the car has them fitted. Self-driving L3 unlocks the autopilot.
 - **3D cars**: each body is lofted from the tycoon's side profile through real cross-sections: tumblehome, rounded shoulders, crowned hood and roof, rounded corners in plan view, and wheel arches with dark wells. On top of that come flush glass with pillars, clear-coated paint (metallic on newer cars), lamps, grilles, plates and trim that follow the body surface, mirrors, door seams and handles, exhausts, and lathed tyres on alloy or steel rims with brake discs and calipers. Calipers are red on sporty cars and gold with carbon-ceramics. The model year sets the style: older cars get chrome bumpers and round lamps, newer ones get swept lamps with LED strips.
 - **Engine sound**: a physical model runs in an AudioWorklet. Every cylinder fires an exhaust pulse at its real crank angle in the firing order, into its own exhaust bank. The pulses pass through the headers, tailpipes and a muffler. That is why a cross-plane V8 burbles (each bank fires unevenly), a flat-4 rumbles (unequal-length headers), an inline-5 warbles, a V12 screams, a rotary braps and a diesel clatters. V and W engines get a tailpipe on each side, in stereo. The model also covers turbo muffling, overrun pops, ignition cuts on hard upshifts and the fuel cut on the rev limiter. Press **▶ Listen** on an engine to hear idle, two blips and a full-throttle pull.

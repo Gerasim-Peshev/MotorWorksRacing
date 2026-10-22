@@ -173,7 +173,8 @@ export const SUSP={
  leaf:{n:'Leaf springs',comfort:-6,sport:-8,prac:8,pres:-2,cost:-20,w:20,t:'leaf'},
  sport:{n:'Sport',comfort:-4,sport:8,prac:0,pres:2,cost:120,w:0,t:'sportsusp'},
  coil:{n:'Coilovers',comfort:-9,sport:15,prac:-2,pres:4,cost:420,w:-5,t:'coil'},
- air:{n:'Air suspension',comfort:12,sport:3,prac:2,pres:8,cost:900,w:25,t:'air'}};
+ air:{n:'Air suspension',comfort:12,sport:3,prac:2,pres:8,cost:900,w:25,t:'air'},
+ drift:{n:'Drift coilovers',comfort:-10,sport:14,prac:-3,pres:3,cost:480,w:-5,t:'coil'}};
 export const INTS={basic:{n:'Basic',comfort:0,pres:0,cost:90,w:0},standard:{n:'Standard',comfort:12,pres:10,cost:240,w:30},premium:{n:'Premium',comfort:24,pres:24,cost:560,w:60},luxury:{n:'Luxury',comfort:36,pres:42,cost:1400,w:95}};
 export const MATS={steel:{n:'Steel',w:1,cost:1,safety:0,pres:0},alu:{n:'Aluminium',w:.8,cost:1.7,safety:2,pres:6,t:'albody'},carbon:{n:'Carbon fibre',w:.62,cost:4.2,safety:4,pres:16,t:'carbon'}};
 export const HEADL={halogen:{n:'Halogen',s:0,pres:0,cost:0},xenon:{n:'Xenon',s:3,pres:4,cost:240,t:'xenon'},led:{n:'LED',s:5,pres:6,cost:320,t:'led'},laser:{n:'Laser',s:6,pres:10,cost:900,t:'laser'}};

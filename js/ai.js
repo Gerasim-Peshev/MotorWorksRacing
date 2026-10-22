@@ -67,6 +67,12 @@ export class AutoPilot {
     throttle = Math.min(throttle, .25 + room);
     const slip = Math.abs(Math.atan2(sim.w, Math.max(au, 1)));
     if (slip > .09) throttle *= .5;
+    // a driver's feel for grip: threshold braking without ABS, and easing off when the driven wheels spin
+    const locked = sim.lock.some(Boolean), spinning = Math.max(...sim.spin) > .12;
+    this.bk = Math.max(.35, Math.min(1, (this.bk ?? 1) + dt * (locked ? -7 : 2.5)));
+    this.tk = Math.max(.25, Math.min(1, (this.tk ?? 1) + dt * (spinning ? -5 : 2)));
+    if (!s.abs) brake *= this.bk;
+    throttle *= this.tk;
     return { throttle, brake, steer, handbrake: false };
   }
 }

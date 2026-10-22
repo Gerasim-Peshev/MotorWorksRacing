@@ -1,13 +1,14 @@
 /* Vehicle dynamics derived from a MotorWorks engine + car design.
    4 wheels, load transfer, combined-slip tyres, turbo lag, real gear ratios, diffs, ABS/ESC, aero, surfaces.
    Car frame: forward f = (-sin ψ, -cos ψ), left l = (-cos ψ, sin ψ) in world (x,z). ψ increases turning left. */
-import { BODIES, SHAPES, LAYOUTS, BODYDIM, VY, GEARINFO, TYRES, BRAKES, SUSP, carStats, engStats, clamp } from './parts.js';
+import { BODIES, SHAPES, LAYOUTS, BODYDIM, VY, GEARINFO, TYRES, BRAKES, SUSP, RACKS, carStats, engStats, clamp, diffOf, rackOf } from './parts.js';
 
 export const G = 9.81, RHO = 1.225, DT = 1 / 240;
 const RPM2W = Math.PI / 30;
 
 const SUSPK = { std: { roll: .55, tau: .085, grip: 1.0, h: 1.0 }, leaf: { roll: .52, tau: .11, grip: .95, h: 1.04 }, sport: { roll: .56, tau: .06, grip: 1.03, h: .97 },
-  coil: { roll: .55, tau: .045, grip: 1.06, h: .95 }, air: { roll: .55, tau: .09, grip: 1.0, h: .98 } };
+  coil: { roll: .55, tau: .045, grip: 1.06, h: .95 }, air: { roll: .55, tau: .09, grip: 1.0, h: .98 },
+  drift: { roll: .44, tau: .045, grip: 1.04, h: .95 } };   // drift: more load transfer at the rear, so the tail lets go first
 const SPREAD = { 1: 1, 3: 2.55, 4: 3.3, 5: 4.05, 6: 4.9, 7: 5.8, 8: 6.8, 9: 8.0 };
 
 /* ---------- torque curve ---------- */
@@ -72,10 +73,11 @@ export function buildSpec(car, eng) {
     car, eng, es, cs, m, L, a: L * (1 - fr), b: L * fr, fr, hcg, tw, W: D.W, Izz, R, Iw: 1.1 * (R / .3) ** 2,
     mu: TY.mu * SU.grip * era, peak: TY.peak, rr: .012 * TY.rr, CdA, ClA: D.cl, clF: car.body === 'super' ? .42 : .5,
     roll: SU.roll + (car.dt === 'fwd' ? .03 : car.dt === 'rwd' ? -.02 : 0), tau: SU.tau,
-    curve, gb: gi, drive: car.dt === 'fwd' ? 1 : car.dt === 'rwd' ? 0 : .38, lsd: !!car.lsd,
+    curve, gb: gi, drive: car.dt === 'fwd' ? 1 : car.dt === 'rwd' ? 0 : .38, lsd: !!car.lsd, diff: diffOf(car),
     brakeF: m * G * 1.08 * BR.f, bias: 0,
     abs: (car.equip || []).includes('abs'), esc: (car.equip || []).includes('esc'),
-    vmax: B.vmax ? B.vmax / 3.6 : 0, lock: ['ltruck', 'htruck', 'van'].includes(car.body) ? .55 : .62,
+    vmax: B.vmax ? B.vmax / 3.6 : 0, lockBase: ['ltruck', 'htruck', 'van'].includes(car.body) ? .55 : .62,
+    lock: (['ltruck', 'htruck', 'van'].includes(car.body) ? .55 : .62) * RACKS[rackOf(car)].lock, steerRate: RACKS[rackOf(car)].rate,
     Ie: es.ev ? .06 : .1 + .045 * (es.L || 1) + (es.tb || 0) * .006,
     boost: es.tb ? { M: es.boostM, tauUp: .22 + .12 * Math.pow(es.bar, .8) + .035 * es.tb, start: (eng.fuel === 'diesel' ? .22 : .3) + .025 * es.bar, span: .14 + .01 * es.bar } : null,
     sc: eng.sc && eng.sc !== 'none',
@@ -115,7 +117,8 @@ export class CarSim {
       gear: 1, rpm: s.curve.idle || 0, shiftT: 0, shiftTo: 0, boost: 0, steer: 0, axf: 0, ayf: 0, lastShift: 0, t: 0,
       spin: [0, 0, 0, 0], lock: [0, 0, 0, 0], slipA: [0, 0, 0, 0], slipL: [0, 0, 0, 0], Fz: [0, 0, 0, 0], surf: [null, null, null, null],
       wheelRot: [0, 0, 0, 0], wspd: [0, 0, 0, 0], limiter: 0, escOn: 0, absOn: 0, tcOn: 0, impact: 0, bump: 0, offTrack: 0, hint: p.hint ?? -1,
-      cvtRatio: s.cvt ? s.cvt.lo : 0, throttleEff: 0, reverse: false, revHold: 0, landing: 0 });
+      cvtRatio: s.cvt ? s.cvt.lo : 0, throttleEff: 0, reverse: false, revHold: 0, landing: 0,
+      om: [0, 0, 0, 0], absK: [1, 1, 1, 1], tcK: 1, slideK: [0, 0, 0, 0], clutch: 0, kick: 0, hbPrev: false, omReset: true, wd: [{}, {}, {}, {}] });
     this.u = 0; this.w = 0; this.loc = {};
   }
   get speed() { return Math.hypot(this.vx, this.vz) }
@@ -147,16 +150,21 @@ export class CarSim {
     // ---- steering (speed sensitive, optional slip assist)
     const au = Math.abs(u);
     const assist = opts.assist ?? .8;
-    let dmax = opts.rawSteer ? s.lock : s.lock / (1 + (au / (opts.steerSpeed || 19)) ** 2);
+    let dmax = opts.rawSteer ? s.lock : Math.min(s.lock, s.lockBase / (1 + (au / (opts.steerSpeed || 19)) ** 2));
     if (assist > 0 && !opts.rawSteer) dmax = Math.max(dmax, .085 + .03 * (1 - assist));
     let target = -steerIn * dmax;                            // + = left
     this.deltaDriver = target;
-    if (assist > 0 && au > 3) {
-      const bf = Math.atan2(w + this.r * s.a, au);           // front axle travel direction
-      target += assist * clamp(bf, -.5, .5) * (u > 0 ? 1 : 0);
+    const bf = au > 3 && u > 0 ? Math.atan2(w + this.r * s.a, au) : 0;   // where the front axle is travelling (+ = left)
+    if (bf && !opts.rawSteer) {
+      // countersteer: the assist points the wheels along the slide; without it, the stick's range grows by the slide angle
+      if (assist > 0) {
+        const slideK = clamp((Math.abs(Math.atan2(w, au)) - .07) / .15, 0, 1), aEff = assist + (Math.min(1, assist * 1.25) - assist) * slideK;
+        target += aEff * clamp(bf, -s.lock * .92, s.lock * .92);   // in a real slide the helper lines the wheels up with the travel
+      }
+      else if (target * bf > 0) target += Math.sign(target) * Math.abs(bf) * Math.abs(steerIn);
     }
     target = clamp(target, -s.lock, s.lock);
-    const rate = opts.rawSteer ? 6 : 3.2 + 2 * (opts.fastSteer || 0);
+    const rate = opts.rawSteer ? 6 : 3.2 + 2 * (opts.fastSteer || 0) + (s.steerRate || 0) + 2.5 * clamp(Math.abs(bf) / .3, 0, 1);
     this.steer += clamp(target - this.steer, -rate * dt, rate * dt);
     const delta = this.steer;
     // ---- vertical / loads
@@ -194,26 +202,30 @@ export class CarSim {
       dragK += sf.drag / 4; bump = Math.max(bump, sf.bump); if (sf.id >= 4) off++;
     }
     this.bump = bump; this.offTrack = off;
-    // ---- engine & drivetrain
-    const ratio = this.ratio();
+    // ---- engine, clutch & drivetrain
+    const ratio = this.ratio(), ar = Math.abs(ratio), R = s.R, om = this.om;
     const drivenW = s.drive === 1 ? [0, 1] : s.drive === 0 ? [2, 3] : [0, 1, 2, 3];
-    let spinAvg = 0; for (const k of drivenW) spinAvg += this.spin[k]; spinAvg /= drivenW.length;
-    const wheelRpm = Math.abs(u) / s.R * Math.abs(ratio) / RPM2W;
+    const share = [s.drive / 2, s.drive / 2, (1 - s.drive) / 2, (1 - s.drive) / 2];
+    // a teleport or an outside change of velocity: the wheels roll with the car again
+    if (Math.abs(u - this.u) > 4 || this.omReset) { for (let k = 0; k < 4; k++) om[k] = u / R; this.omReset = false }
+    let omC = 0, spinAvg = 0; for (const k of drivenW) { omC += om[k] * share[k]; spinAvg += this.spin[k] / drivenW.length }
+    const wheelRpm = Math.abs(omC) * ar / RPM2W;            // engine speed the driven wheels ask for (wheelspin included)
     const shifting = this.shiftT > 0;
     if (shifting) { this.shiftT -= dt; if (this.shiftT <= 0) { this.gear = this.shiftTo; this.shiftT = 0 } }
     // auto gearbox
-    if (opts.auto && !s.cvt && s.ratios.length > 1 && !shifting && !this.reverse && this.t - this.lastShift > .45) {
+    if (opts.auto && !s.cvt && s.ratios.length > 1 && !shifting && !this.reverse && !inp.handbrake && this.t - this.lastShift > .45) {
       const up = c.red * (thr > .65 ? .975 : .5 + .45 * thr), r = Math.min(this.rpm, Math.max(wheelRpm, c.idle * .8));
       const atLimit = this.rpm > c.red * .985;
-      if (this.gear < s.ratios.length && ((r > up && spinAvg < .25) || (atLimit && thr > .5)) && !this.air) this.beginShift(this.gear + 1);
+      if (this.gear < s.ratios.length && ((r > up && spinAvg < .25) || (atLimit && thr > .5 && spinAvg < .6)) && !this.air) this.beginShift(this.gear + 1);
       else if (this.gear > 1) {
-        const rLow = Math.abs(u) / s.R * s.ratios[this.gear - 2] / RPM2W;
+        const vg = Math.hypot(u, w), rLow = vg / R * s.ratios[this.gear - 2] / RPM2W;   // ground speed, so a slide or a locked wheel doesn't fake a crawl
         const pw = q => c.full(q) * q;
         let go = false;
+        const rg = Math.max(r, vg / R * ar / RPM2W);
         if (rLow < c.red * .94) {
-          if (thr > .85) go = pw(rLow) > pw(Math.max(r, c.idle)) * 1.04;
+          if (thr > .85) go = pw(rLow) > pw(Math.max(rg, c.idle)) * 1.04;
           else if (brk > .2) go = rLow < c.red * .78;
-          else go = r < Math.max(c.idle * 1.5, c.red * .32);
+          else go = rg < Math.max(c.idle * 1.5, c.red * .32);
         }
         if (go) this.beginShift(this.gear - 1);
       }
@@ -221,126 +233,143 @@ export class CarSim {
     // CVT keeps the engine near the power band
     if (s.cvt) {
       const tgt = c.idle + (c.rP * 1.0 - c.idle) * Math.pow(thr, .8);
-      const want = au < .5 ? s.cvt.lo : clamp(tgt * RPM2W * s.R / au, s.cvt.hi, s.cvt.lo);
+      const want = au < .5 ? s.cvt.lo : clamp(tgt * RPM2W * R / au, s.cvt.hi, s.cvt.lo);
       this.cvtRatio += (want - this.cvtRatio) * Math.min(1, dt * 4);
     }
-    // engine speed
+    // clutch: 0 engaged, 1 slipping to pull away, 2 disengaged (shifting, handbrake held), 3 kick (dumped with the engine revved)
     const launchRpm = c.ev ? 0 : s.gb.type === 'auto' ? c.red * .38 : Math.min(c.rT * .9 + c.idle, c.red * .7);
-    let rpmTarget = wheelRpm * (1 + spinAvg);
-    let clutchSlip = false;
     const slipGear = this.reverse || this.gear <= (s.gb.type === 'auto' ? 2 : 1) || s.cvt;
-    if (!c.ev && !shifting) {
-      const lt = c.idle + thr * (launchRpm - c.idle);
-      if (slipGear && rpmTarget < lt) { rpmTarget = lt; clutchSlip = true }
-      else if (rpmTarget < c.idle) { rpmTarget = c.idle; clutchSlip = true }   // clutch in below idle
-    }
-    if (shifting) {
-      const nr = Math.abs(u) / s.R * s.ratios[this.shiftTo - 1] / RPM2W;
-      rpmTarget = this.rpm + (Math.max(nr, c.idle) - this.rpm) * Math.min(1, dt * 14);
-    }
-    if (c.ev) rpmTarget = wheelRpm * (1 + spinAvg);
-    this.rpm += (rpmTarget - this.rpm) * Math.min(1, dt * (clutchSlip ? 12 : 40));
-    this.rpm = clamp(this.rpm, c.ev ? 0 : c.idle * .7, c.red * 1.06);
-    // turbo
-    if (s.boost) {
-      const x = this.rpm / c.red, ramp = clamp((x - s.boost.start) / s.boost.span, 0, 1);
-      const tgt = thr * ramp;
-      this.boost += (tgt - this.boost) * Math.min(1, dt / (tgt > this.boost ? s.boost.tauUp : .16));
-    }
+    const lt = c.idle + thr * (launchRpm - c.idle);
+    const hbHeld = !!inp.handbrake;
+    if (!c.ev && this.hbPrev && !hbHeld && au > 3 && this.rpm > wheelRpm * 1.12 + 300 && !this.reverse) this.kick = .5;   // clutch kick
+    this.hbPrev = hbHeld;
+    let clutch = 0;
+    if (c.ev) clutch = 0;
+    else if (shifting || hbHeld) { clutch = 2; this.kick = 0 }
+    else if (this.kick > 0) clutch = 3;
+    else if ((slipGear && wheelRpm < lt) || wheelRpm < c.idle) clutch = 1;
+    this.clutch = clutch;
     // rev limiter
     if (this.rpm >= c.red * .995 && !c.ev) this.limiter = .06;
     if (this.limiter > 0) this.limiter -= dt;
     let throttleEff = this.limiter > 0 ? 0 : thr;
     if (s.vmax && Math.abs(u) > s.vmax) throttleEff = 0;
     if (this.reverse && u < -8.5) throttleEff = 0;          // reverse is limited to ~30 km/h
-    // ESC throttle intervention
-    if (this.escOn > 0) throttleEff *= .35;
-    let Teng;
+    if (this.escOn > 0) throttleEff *= .35;                  // ESC throttle intervention
+    throttleEff *= this.tcK;                                 // traction control
     const full = c.full(Math.max(this.rpm, c.ev ? 1 : c.idle));
     const bfac = s.boost ? (1 / s.boost.M + (1 - 1 / s.boost.M) * this.boost) : 1;
     const fric = c.ev ? .18 * c.Tpk * (au > 1 ? 1 : 0) : (.06 + .12 * this.rpm / c.red) * c.Tpk;
-    Teng = throttleEff * full * bfac - (1 - throttleEff) * fric;
+    let Teng = throttleEff * full * bfac - (1 - throttleEff) * fric;
     if (!c.ev && this.rpm <= c.idle * 1.02 && Teng < 0) Teng = 0;
     this.throttleEff = throttleEff;
-    let shiftFac = 1;
-    if (shifting) shiftFac = s.gb.type === 'dct' ? .85 : s.gb.type === 'auto' ? .45 : 0;
-    // total drive force at the contact patches (+ forward, - when engine braking)
-    let Fdrive = Teng * ratio * s.gb.eff * shiftFac / s.R;
-    if (Teng < 0 && Math.abs(u) < 1) Fdrive = 0;           // no engine braking at a standstill
-    // ---- per wheel forces
-    let Ffwd = 0, Fleft = 0, M = 0, absAct = 0, tcAct = 0, sq = 0;
-    const share = [s.drive / 2, s.drive / 2, (1 - s.drive) / 2, (1 - s.drive) / 2];
-    // open diff: an axle can only push as hard as its weaker wheel allows
-    const axleCap = k => { const o = k ^ 1; return Math.min(Fz[k] * this.surf[k].mu, Fz[o] * this.surf[o].mu) * s.mu };
+    const eff = s.gb.eff, Tcap = 1.5 * c.Tpk;                 // clutch capacity
+    let Tw = 0;                                                // torque delivered to the driven wheels (sum, N·m)
+    if (clutch === 0 || clutch === 1) Tw = Teng * ratio * eff;
+    else if (clutch === 2 && shifting) Tw = Teng * ratio * eff * (s.gb.type === 'dct' ? .85 : s.gb.type === 'auto' ? .45 : 0);
+    else if (clutch === 3) Tw = Tcap * Math.sign(this.rpm - wheelRpm) * ratio * eff;
+    if ((clutch === 1 || clutch === 0) && Teng < 0 && Math.abs(u) < 1) Tw = 0;   // no engine braking at a standstill
+    if (clutch === 1 && Teng < 0) Tw = 0;
+    const Ieng = clutch === 0 ? s.Ie * ratio * ratio : 0;     // the engine's inertia, seen through the gearbox
+    // ---- wheels: spin dynamics with combined-slip tyres
+    const kp = s.peak, tp = Math.tan(s.peak), useAbs = opts.abs && s.abs, Wd = this.wd;
     const loadSens = Fz0 => 1 - .07 * (Fz0 / (s.m * G / 4) - 1);
+    const tyre = (cap, sx, sy, out) => {                      // normalised slip -> forces (similarity method, magic-formula shape)
+      const sl = Math.hypot(sx, sy);
+      if (sl < 1e-6) { out.Fx = 0; out.Fy = 0; out.dFx = cap * 3.105; out.sl = 0; return out }
+      const at = Math.atan(2.3 * sl), F = cap * Math.sin(1.35 * at), dF = cap * Math.cos(1.35 * at) * 3.105 / (1 + 5.29 * sl * sl), ux2 = (sx / sl) ** 2;
+      out.Fx = F * sx / sl; out.Fy = -F * sy / sl; out.dFx = Math.max(0, dF * ux2 + F / sl * (1 - ux2)); out.sl = sl; return out;
+    };
     for (let k = 0; k < 4; k++) {
-      const front = k < 2, dl = front ? delta : 0;
+      const q = Wd[k], front = k < 2, dl = front ? delta : 0;
       const vxw = u - this.r * pl[k], vyw = w + this.r * pf[k];
       const cd = Math.cos(dl), sd = Math.sin(dl);
       const vl = vxw * cd + vyw * sd, vt = -vxw * sd + vyw * cd;  // wheel frame: long, lateral(left)
-      const mu = s.mu * this.surf[k].mu * clamp(loadSens(Fz[k]), .8, 1.12);
-      const cap = mu * Fz[k];
-      const vref = Math.max(Math.abs(vl), 4);
-      const alpha = Math.atan2(vt, vref);
+      const mu = s.mu * this.surf[k].mu * clamp(loadSens(Fz[k]), .8, 1.12), cap = mu * Fz[k];
+      const alpha = Math.atan2(vt, Math.max(Math.abs(vl), 4));
+      const vden = Math.max(Math.abs(vl), 3), sy = Math.tan(clamp(alpha, -1.45, 1.45)) / tp;
+      Object.assign(q, { vl, vt, cd, sd, cap, alpha, vden, sy });
       this.slipA[k] = alpha;
-      let Fy = -Math.sign(alpha) * cap * mf(Math.abs(alpha), s.peak);
-      // longitudinal demand
-      let Fx = Fdrive * share[k];
-      if (!s.lsd && share[k] > 0 && Fdrive > 0) { const ac = axleCap(k) * 1.0; Fx = Math.min(Fx, ac) }
-      // brakes
-      const hb = inp.handbrake && !front ? 1 : 0;
-      const bshare = front ? s.bias / 2 : (1 - s.bias) / 2;
-      const Fb = brk * s.brakeF * bshare;
-      const dir = Math.abs(vl) > .05 ? Math.sign(vl) : 0;
-      // rolling resistance & surface drag
-      let Fbrake = Fb;
-      let locked = false, spinning = false;
-      if (hb && Math.abs(vl) > .5) locked = true;
-      const useAbs = opts.abs && s.abs;
-      if (Fbrake > 0 && Math.abs(vl) > .8) {
-        const avail = Math.sqrt(Math.max(0, cap * cap - Fy * Fy * .25));
-        if (Fbrake > avail * 1.02) {
-          if (useAbs) { Fbrake = avail * (front ? .93 : .8); absAct = 1; Fy *= front ? .75 : .85 }
-          else locked = true;
-        }
-      }
-      // traction: wheelspin
-      if (!locked && Fx > 0) {
-        const avail = Math.sqrt(Math.max(0, cap * cap - Fy * Fy * .3));
-        if (Fx > avail) {
-          if (opts.tc && s.esc) { Fx = avail * .97; tcAct = 1; this.spin[k] = Math.max(0, this.spin[k] - dt * 4) }
-          else { this.spin[k] = Math.min(2.5, this.spin[k] + dt * (Fx / Math.max(avail, 1) - 1) * 7) }
-        } else this.spin[k] = Math.max(0, this.spin[k] - dt * 5);
-      } else this.spin[k] = Math.max(0, this.spin[k] - dt * (this.limiter > 0 ? 2 : 6));
-      spinning = this.spin[k] > .08;
-      let fxW, fyW;
-      if (locked) {
-        const vm = Math.hypot(vl, vt) || 1, F = cap * .8;
-        fxW = -F * vl / vm; fyW = -F * vt / vm; this.lock[k] = 1;
-      } else if (spinning) {
-        this.lock[k] = 0;
-        // a wheel turning faster than the road pushes forward (or backward in reverse) with sliding friction
-        const dirW = this.reverse ? -1 : 1;
-        const sx = this.spin[k] * Math.max(Math.abs(vl), 3), vm = Math.hypot(sx, vt) || 1, F = cap * .86;
-        fxW = F * sx / vm * dirW; fyW = -F * vt / vm;
-      } else {
-        this.lock[k] = 0;
-        fxW = Fx - (dir ? dir * Fbrake : 0);
-        fyW = Fy;
-        const tot = Math.hypot(fxW, fyW);
-        if (tot > cap) { const sc = cap / tot; fxW *= sc; fyW *= sc }
-      }
-      // rolling resistance
-      fxW -= Math.sign(vl) * Fz[k] * (s.rr + dragK * .0) * Math.min(1, Math.abs(vl) * 2);
-      // body frame
-      const bf = fxW * cd - fyW * sd, bl = fxW * sd + fyW * cd;
+      // torques on the wheel
+      let Tb = brk * s.brakeF * (front ? s.bias / 2 : (1 - s.bias) / 2) * R;
+      if (useAbs) Tb *= this.absK[k];
+      if (hbHeld && !front) Tb += s.m * G * .9 * R;            // handbrake locks the rear wheels
+      const Trr = Fz[k] * s.rr * R;
+      // tyre force at the current wheel speed and its stiffness dFx/dω (used to integrate the wheel semi-implicitly)
+      tyre(cap, (om[k] * R - vl) / vden / kp, sy, q);
+      q.kS = q.dFx * R / (kp * vden); q.Tb = Tb; q.Trr = Math.sign(om[k]) * Trr; q.F0 = q.Fx; q.Tin = Tw * share[k];
+    }
+    // free (undriven) wheels
+    const brakeClamp = (q, Ib) => { const db = q.Tb * dt / Ib; if (Math.abs(q.o) <= db) q.o = 0; else q.o -= Math.sign(q.o) * db };   // brakes stop a wheel, never reverse it
+    for (let k = 0; k < 4; k++) if (!share[k]) {
+      const q = Wd[k], Ie = s.Iw + dt * R * q.kS;
+      q.o = om[k] + dt * (-q.F0 * R - q.Trr) / Ie; brakeClamp(q, Ie); q.Ie = Ie;
+    }
+    // driven axles through the differential: a common mode (engine, gearbox, both wheels) and a differential mode
+    // (the wheels against each other, only their own inertia). Open diffs let the unloaded wheel spin while the
+    // other gets no more torque than it does; a limited-slip diff's clutches resist that; a welded diff locks it.
+    const axles = s.drive === 1 ? [[0, 1]] : s.drive === 0 ? [[2, 3]] : [[0, 1], [2, 3]];
+    for (const [a, b] of axles) {
+      const A = Wd[a], B = Wd[b], axS = share[a] + share[b], Tin = Tw * axS, Ic = Ieng * axS, kSum = A.kS + B.kS;
+      const wc = (om[a] + om[b]) / 2, dlt = (om[a] - om[b]) / 2;
+      const wc1 = wc + dt * (Tin - (A.F0 + B.F0) * R - A.Trr - B.Trr) / (2 * s.Iw + Ic + dt * R * kSum);
+      const Id = 2 * s.Iw + dt * R * kSum;
+      let d1 = dlt + dt * ((B.F0 - A.F0) * R - A.Trr + B.Trr) / Id;
+      const Tlock = s.diff === 'welded' ? Infinity : s.diff === 'lsd' ? 90 + (Tin >= 0 ? .55 : .3) * Math.abs(Tin) : 12;
+      const dl = 2 * Tlock * dt / Id;                       // what the clutch packs can take out of the speed difference
+      d1 = Math.abs(d1) <= dl ? 0 : d1 - Math.sign(d1) * dl;
+      A.o = wc1 + d1; B.o = wc1 - d1;
+      for (const q of [A, B]) { const Ib = s.Iw + Ic / 4 + dt * R * q.kS; brakeClamp(q, Ib); q.Ie = Ib }
+    }
+    if (s.drive > 0 && s.drive < 1) {                          // AWD centre coupling between the axles
+      const F0 = Wd[0], F1 = Wd[1], R0 = Wd[2], R1 = Wd[3], If = F0.Ie + F1.Ie, Ir = R0.Ie + R1.Ie;
+      const d = (F0.o + F1.o) / 2 - (R0.o + R1.o) / 2, P = d * If * Ir / (If + Ir), Tm = 260 + .3 * Math.abs(Tw);
+      const p = Math.sign(P) * Math.min(Math.abs(P), Tm * dt);
+      F0.o -= p / If; F1.o -= p / If; R0.o += p / Ir; R1.o += p / Ir;
+    }
+    // forces at the new wheel speeds
+    let Ffwd = 0, Fleft = 0, M = 0, absAct = 0, tcEx = 0, sq = 0;
+    for (let k = 0; k < 4; k++) {
+      const q = Wd[k]; om[k] = q.o;
+      const kap = (q.o * R - q.vl) / q.vden;
+      tyre(q.cap, kap / kp, q.sy, q);
+      const fxW = q.Fx, fyW = q.Fy;
+      const bf = fxW * q.cd - fyW * q.sd, bl = fxW * q.sd + fyW * q.cd;
       Ffwd += bf; Fleft += bl; M += pf[k] * bl - pl[k] * bf;
-      this.slipL[k] = locked ? 1 : spinning ? this.spin[k] : 0;
-      const slide = Math.max(Math.abs(alpha) / (s.peak * 1.4), locked ? 1 : 0, spinning ? Math.min(1, this.spin[k]) : 0);
+      // ABS releases a wheel that slides; TC watches the driven wheels
+      if (useAbs && brk > .05 && q.vl > 2 && kap < -kp * 1.25) { this.absK[k] = Math.max(.12, this.absK[k] - dt * 28); absAct = 1 }
+      else this.absK[k] = Math.min(1, this.absK[k] + dt * 9);
+      const slipV = q.o * R - q.vl;                            // how much faster the tread moves than the road
+      if (share[k] > 0 && q.Tin > 0 && slipV > Math.max(kp * 1.6 * Math.abs(q.vl), 1)) tcEx = Math.max(tcEx, slipV / Math.max(kp * 1.6 * Math.abs(q.vl), 1) - 1);
+      this.slipL[k] = kap;
+      this.spin[k] = share[k] > 0 ? Math.max(0, slipV) / Math.max(Math.abs(q.vl), 8) : 0;
+      this.lock[k] = q.o === 0 && Math.abs(q.vl) > .5 ? 1 : 0;
+      const slide = clamp((q.sl - 1.15) / 1.6, 0, 1);
       sq = Math.max(sq, (this.surf[k].id <= 3 && Fz[k] > 50) ? slide : 0);
-      // wheel spin speed (visual/audio)
-      const ws = locked ? 0 : vl * (1 + (spinning ? this.spin[k] : 0));
-      this.wspd[k] = ws; this.wheelRot[k] += ws / s.R * dt;
+      this.slideK[k] = Fz[k] > 50 ? slide : 0;
+      this.wspd[k] = q.o * R; this.wheelRot[k] += q.o * dt;
+    }
+    let tcAct = 0;
+    if (opts.tc && s.esc && tcEx > 0) { this.tcK = Math.max(.05, this.tcK - dt * (5 + 8 * tcEx)); tcAct = 1 } else this.tcK = Math.min(1, this.tcK + dt * 2.2);
+    // engine speed
+    let omC2 = 0; for (const k of drivenW) omC2 += om[k] * share[k];
+    const rpmW = Math.abs(omC2) * ar / RPM2W;
+    if (c.ev) this.rpm = rpmW;
+    else if (clutch === 0) this.rpm += (rpmW - this.rpm) * Math.min(1, dt * 40);
+    else if (clutch === 1) this.rpm += (Math.max(rpmW, lt, c.idle) - this.rpm) * Math.min(1, dt * 12);
+    else if (clutch === 2) {
+      if (shifting) { const nr = Math.abs(u) / R * s.ratios[this.shiftTo - 1] / RPM2W; this.rpm += (Math.max(nr, c.idle) - this.rpm) * Math.min(1, dt * 14) }
+      else { const tgt = c.idle + throttleEff * (c.red * 1.02 - c.idle); this.rpm += (tgt - this.rpm) * Math.min(1, dt * (tgt > this.rpm ? 3.5 : 2.5)) }   // free revving
+    } else {                                                   // kick: the flywheel's energy goes into the wheels
+      this.rpm -= (Tcap - Math.max(0, Teng)) / s.Ie * dt / RPM2W;
+      this.kick -= dt; if (this.rpm <= rpmW || this.kick <= 0) { this.kick = 0; this.rpm = Math.max(this.rpm, rpmW) }
+    }
+    this.rpm = clamp(this.rpm, c.ev ? 0 : c.idle * .7, c.red * 1.06);
+    // turbo
+    if (s.boost) {
+      const x = this.rpm / c.red, ramp = clamp((x - s.boost.start) / s.boost.span, 0, 1);
+      const tgt = thr * ramp;
+      this.boost += (tgt - this.boost) * Math.min(1, dt / (tgt > this.boost ? s.boost.tauUp : .16));
     }
     this.absOn = absAct; this.tcOn = tcAct; this.squeal = sq;
     // ---- ESC (yaw control)
