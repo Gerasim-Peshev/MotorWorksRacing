@@ -103,9 +103,9 @@ export class App {
   saveSetting(k, v) { this.store.setSetting(k, v); this.applyInputSettings() }
   applyInputSettings() { const s = this.store.settings; Object.assign(this.input.settings, { vibration: s.vibration, steerDead: s.steerDead, steerGamma: s.steerGamma, trigDead: s.trigDead }); setVolume(s.volume) }
   autoQuality() { const mobile = matchMedia('(pointer:coarse)').matches; const cores = navigator.hardwareConcurrency || 4; return mobile ? (cores >= 8 ? 'medium' : 'low') : cores >= 8 ? 'high' : 'medium' }
-  navRoot() { return $('#modal') || $('#sheet') || $('#app') }
-  back() { if ($('#modal')) return this.closeModal(); if (this.sheet) { this.closeSheet(); return } }
-  cycleTab(d) { if ($('#modal') || this.sheet) return; const i = TABS.findIndex(t => t[0] === this.tab); this.tab = TABS[(i + d + TABS.length) % TABS.length][0]; this.renderNav(); this.renderView(); setTimeout(() => this.focusFirst(), 20) }
+  navRoot() { return this.session?.pauseEl || $('#modal') || $('#sheet') || $('#app') }
+  back() { if (this.session?.paused) return this.session.pause(false); if ($('#modal')) return this.closeModal(); if (this.sheet) { this.closeSheet(); return } }
+  cycleTab(d) { if (this.session || $('#modal') || this.sheet) return; const i = TABS.findIndex(t => t[0] === this.tab); this.tab = TABS[(i + d + TABS.length) % TABS.length][0]; this.renderNav(); this.renderView(); setTimeout(() => this.focusFirst(), 20) }
   focusFirst() { const r = this.navRoot(); const f = r && this.nav.focusables(r).find(el => !el.closest('.top')); if (f && document.body.classList.contains('gp-nav')) f.focus() }
   /* ---------- chrome ---------- */
   renderTop() {
@@ -135,8 +135,10 @@ export class App {
         <div class="row"><button class="btn primary" data-a="pickTrack:${c.id}" ${st ? '' : 'disabled'}>${tx('Drive')}</button><button class="btn" data-a="editCar:${c.id}">${tx('Edit')}</button><button class="btn ghost" data-a="dupCar:${c.id}">${tx('Copy')}</button><button class="btn ghost" data-a="delCar:${c.id}" aria-label="${tx('Delete')}">✕</button></div></article>` };
     const ty = this.store.tycoonSave();
     return `<div class="sect-h"><div><small>${tx('{n} cars', { n: cars.length })}</small><h2>${tx('Garage')}</h2></div><div class="row"><button class="btn primary" data-a="newCar">${tx('Design car')}</button></div></div>
-      <div class="coach"><b>${tx('How it works')}</b><span>${tx('Design an engine, build a car around it, then take it to the Nordschleife, Spa, Suzuka, Barcelona or the Red Bull Ring. Every part you choose changes how it drives.')}</span></div>
-      ${cars.length ? `<div class="grid">${cars.map(card).join('')}</div>` : `<div class="card"><h3>${tx('No cars yet')}</h3><button class="btn primary" data-a="newCar">${tx('Design car')}</button></div>`}
+      <div class="coach"><b>${tx('How it works')}</b><span>${tx('Design an engine, build a car around it, then take it to the Nordschleife, Spa, Suzuka, Barcelona, the Red Bull Ring or A1 Motor Park. Every part you choose changes how it drives.')}</span></div>
+      ${cars.length ? `<div class="grid">${cars.map(card).join('')}</div>` : this.store.engines.length
+        ? `<div class="card empty"><h3>${tx('No cars yet')}</h3><p class="muted">${tx('Build a car around one of your engines.')}</p><div class="row"><button class="btn primary" data-a="newCar">${tx('Design car')}</button></div></div>`
+        : `<div class="card empty"><h3>${tx('Your garage is empty')}</h3><p class="muted">${tx('Start with an engine: pick its layout, size and technology. Then build a car around it.')}</p><div class="row"><button class="btn primary" data-a="newEngine">${tx('Design engine')}</button></div></div>`}
       ${ty && ty.cars && ty.cars.length ? `<section class="card"><h3>${tx('From MotorWorks Tycoon')}</h3><p class="muted">${tx('Your company {name} has {e} engines and {c} cars on this device.', { name: esc(ty.name), e: ty.engines.length, c: ty.cars.length })}</p><button class="btn" data-a="importTycoon">${tx('Import them into the garage')}</button></section>` : ''}`;
   }
   viewEngines() {
@@ -146,7 +148,7 @@ export class App {
       return `<article class="card"><div class="spread"><div><small>${tx(L.n)} · ${e.year}</small><h3>${esc(e.name)}</h3></div>${used ? `<span class="tag">${tx('{n} cars', { n: used })}</span>` : ''}</div>
         <div class="dl"><div><small>${tx('Power')}</small><b>${tx('{v} hp', { v: fn(s.hp) })}</b></div><div><small>${tx('Torque')}</small><b>${tx('{v} Nm', { v: fn(s.tq) })}</b></div><div><small>${s.ev ? tx('Motor') : tx('Displacement')}</small><b>${s.ev ? tx('Electric') : dec(s.L, 1) + ' ' + tx('L')}</b></div><div><small>${tx('Redline')}</small><b>${tx('{v} rpm', { v: fn(s.rpm) })}</b></div><div><small>${tx('Weight')}</small><b>${tx('{v} kg', { v: s.w })}</b></div></div>
         <small class="muted">${parts.join(' · ')}</small><div class="row"><button class="btn" data-a="editEngine:${e.id}">${tx('Edit')}</button><button class="btn ghost" data-a="dupEngine:${e.id}">${tx('Copy')}</button><button class="btn ghost" data-a="delEngine:${e.id}" aria-label="${tx('Delete')}">✕</button></div></article>` };
-    return `<div class="sect-h"><div><small>${tx('{n} engines', { n: es.length })}</small><h2>${tx('Engines')}</h2></div><button class="btn primary" data-a="newEngine">${tx('Design engine')}</button></div><div class="grid">${es.map(card).join('')}</div>`;
+    return `<div class="sect-h"><div><small>${tx('{n} engines', { n: es.length })}</small><h2>${tx('Engines')}</h2></div><button class="btn primary" data-a="newEngine">${tx('Design engine')}</button></div>${es.length ? `<div class="grid">${es.map(card).join('')}</div>` : `<div class="card empty"><h3>${tx('No engines yet')}</h3><p class="muted">${tx('Start with an engine: pick its layout, size and technology. Then build a car around it.')}</p><div class="row"><button class="btn primary" data-a="newEngine">${tx('Design engine')}</button></div></div>`}`;
   }
   viewTracks() {
     const card = t => { const recs = this.store.trackRecords(t.id), best = recs[0];
@@ -378,6 +380,7 @@ export class App {
   }
   pickCar(trackId) {
     const t = this.tracks.find(x => x.id === trackId);
+    if (!this.store.cars.length) return this.modal(`<small>${esc(t.name)}</small><h2>${tx('No cars yet')}</h2><p class="muted">${this.store.engines.length ? tx('Design a car first, then bring it here.') : tx('Start with an engine: pick its layout, size and technology. Then build a car around it.')}</p>`, [[tx('Cancel'), 'close'], this.store.engines.length ? [tx('Design car'), 'newCar', 1] : [tx('Design engine'), 'newEngine', 1]]);
     this.modal(`<small>${esc(t.name)}</small><h2>${tx('Choose your car')}</h2><div class="pickgrid cars">${this.store.cars.slice().reverse().map(c => { const r = this.store.record(t.id, c.id); return `<button class="pick" data-a="go:${t.id}:${c.id}">${carSVG(c.body, c.color, c.mname)}<b>${esc(c.mname)} ${esc(c.trim)}</b><small>${r ? fmtTime(r.t) : tx('{v} hp', { v: fn(engStats(this.store.engine(c.eng) || {}).hp || 0) })}</small></button>` }).join('')}</div>`, [[tx('Cancel'), 'close']], true);
   }
   async drive(trackId, carId, mode) {
@@ -400,18 +403,18 @@ export class App {
       case 'tab': this.tab = x; this.renderNav(); this.renderView(); scrollTo(0, 0); break;
       case 'lang': setLang(LANG === 'en' ? 'bg' : 'en'); this.renderTop(); this.renderNav(); this.renderView(); if (this.sheet) this.renderSheet(true); break;
       case 'close': this.closeModal(); break;
-      case 'newCar': this.openCar(); break;
+      case 'newCar': this.closeModal(); this.openCar(); break;
       case 'editCar': this.openCar(this.store.car(x)); break;
       case 'dupCar': { const c = this.store.car(x); this.store.putCar({ ...c, id: this.store.id('c'), mname: c.mname, trim: (c.trim ? c.trim + ' ' : '') + tx('copy'), equip: c.equip.slice(), src: null }); this.renderView(); break }
       case 'delCar': { const c = this.store.car(x); this.modal(`<h3>${tx('Delete the {name}?', { name: esc(c.mname + ' ' + c.trim) })}</h3><p>${tx('Its lap records are deleted too.')}</p>`, [[tx('Keep it'), 'close'], [tx('Delete'), 'doDelCar:' + x, 1]]); break }
       case 'doDelCar': this.store.delCar(x); this.closeModal(); this.renderView(); break;
-      case 'newEngine': this.openEngine(); break;
+      case 'newEngine': this.closeModal(); this.openEngine(); break;
       case 'editEngine': this.openEngine(this.store.engine(x)); break;
       case 'dupEngine': { const e = this.store.engine(x); this.store.putEngine({ ...e, id: this.store.id('e'), name: e.name + ' ' + tx('copy'), src: null }); this.renderView(); break }
       case 'delEngine': if (!this.store.delEngine(x)) this.toast(tx('This engine is fitted to a car. Change or delete those cars first.')); this.renderView(); break;
       case 'closeSheet': this.closeSheet(); break;
       case 'eo': d[x] = y; if (x === 'fuel' && y === 'diesel') { d.bore = Math.max(d.bore, 80); d.stroke = Math.max(d.stroke, 86) } this.fixEngine(); this.renderSheet(true); break;
-      case 'saveEngine': { const e = { ...d, id: d.id || this.store.id('e') }; this.store.putEngine(e); this.closeSheet(); this.tab = 'eng'; this.renderNav(); this.renderView(); this.toast(tx('{name} is ready: {hp}.', { name: e.name, hp: tx('{v} hp', { v: fn(engStats(e).hp) }) })); break }
+      case 'saveEngine': { const e = { ...d, id: d.id || this.store.id('e') }; this.store.putEngine(e); this.closeSheet(); this.tab = this.store.cars.length ? 'eng' : 'garage'; this.renderNav(); this.renderView(); this.toast(tx('{name} is ready: {hp}.', { name: e.name, hp: tx('{v} hp', { v: fn(engStats(e).hp) }) })); break }
       case 'co': d[x] = y; this.fixCar(); this.renderSheet(true); break;
       case 'ceng': d.eng = x; this.fixCar(); this.renderSheet(true); break;
       case 'cs': d.equip = d.equip.includes(x) ? d.equip.filter(s => s !== x) : [...d.equip, x]; this.renderSheet(true); break;

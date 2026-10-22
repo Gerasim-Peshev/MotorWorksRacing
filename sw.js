@@ -1,5 +1,5 @@
 /* MotorWorks Racing service worker: app shell + tracks cached for offline play. */
-const CACHE = 'mw-racing-v2';
+const CACHE = 'mw-racing-v3';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
   'js/ui.js', 'js/drive.js', 'js/scene.js', 'js/track.js', 'js/physics.js', 'js/parts.js', 'js/tables.js', 'js/carmodel.js', 'js/ai.js', 'js/input.js', 'js/audio.js', 'js/store.js', 'js/i18n.js', 'js/bg.js', 'js/bg2.js', 'js/vendor/three.module.min.js',
   'fonts/fonts.css', 'fonts/fira-sans-cyrillic-400-normal.woff2', 'fonts/fira-sans-cyrillic-500-normal.woff2', 'fonts/fira-sans-cyrillic-600-normal.woff2', 'fonts/fira-sans-cyrillic-700-normal.woff2', 'fonts/fira-sans-latin-400-normal.woff2', 'fonts/fira-sans-latin-500-normal.woff2', 'fonts/fira-sans-latin-600-normal.woff2', 'fonts/fira-sans-latin-700-normal.woff2', 'fonts/oswald-cyrillic-500-normal.woff2', 'fonts/oswald-cyrillic-600-normal.woff2', 'fonts/oswald-cyrillic-700-normal.woff2', 'fonts/oswald-latin-500-normal.woff2', 'fonts/oswald-latin-600-normal.woff2', 'fonts/oswald-latin-700-normal.woff2',

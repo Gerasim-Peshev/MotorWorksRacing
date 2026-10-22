@@ -1,5 +1,5 @@
 /* Garage persistence: engines, cars, lap records, ghosts, settings. Imports from MotorWorks Tycoon saves. */
-import { PRESET_ENGINES, PRESET_CARS, BODIES, GEARS, DRIVES, SUSP, INTS, MATS, HEADL, EQUIP, LAYOUTS, clamp } from './parts.js';
+import { BODIES, GEARS, DRIVES, SUSP, INTS, MATS, HEADL, EQUIP, LAYOUTS, clamp } from './parts.js';
 
 const KEY = 'motorworks-racing-v1', TYCOON_KEY = 'motorworks-tycoon-v1', GHOST = 'motorworks-racing-ghost-';
 export const DEFAULT_SETTINGS = { units: 'kmh', quality: 'auto', volume: .75, camera: 'chase', gearbox: 'car', assist: .8, steerSpeed: 19, vibration: true, steerDead: .06, steerGamma: 1.45, trigDead: .03 };
@@ -10,11 +10,20 @@ const b64d = s => decodeURIComponent(escape(atob(s.trim().replace(/\s+/g, ''))))
 export class Store {
   constructor() { this.d = this.load() }
   fresh() {
-    return { v: 1, nid: 100, engines: PRESET_ENGINES.map(e => ({ ...e })), cars: PRESET_CARS.map(c => ({ ...c, equip: c.equip.slice() })), records: {}, settings: { ...DEFAULT_SETTINGS }, imported: [] };
+    return { v: 1, nid: 100, engines: [], cars: [], records: {}, settings: { ...DEFAULT_SETTINGS }, imported: [], noDemo: 1 };
   }
   load() {
-    try { const r = JSON.parse(localStorage.getItem(KEY)); if (r && r.v === 1 && Array.isArray(r.cars)) { r.settings = { ...DEFAULT_SETTINGS, ...(r.settings || {}) }; r.records = r.records || {}; r.imported = r.imported || []; return r } } catch (e) { }
+    try { const r = JSON.parse(localStorage.getItem(KEY)); if (r && r.v === 1 && Array.isArray(r.cars)) { r.settings = { ...DEFAULT_SETTINGS, ...(r.settings || {}) }; r.records = r.records || {}; r.imported = r.imported || []; if (!r.noDemo) this.dropDemo(r); return r } } catch (e) { }
     return this.fresh();
+  }
+  /* earlier versions started with six demo cars (pc1–pc6 on engines pe1–pe6): remove them once, keeping any demo engine a player's own car still uses */
+  dropDemo(r) {
+    const demoCar = id => /^pc[1-6]$/.test(id), demoEng = id => /^pe[1-6]$/.test(id);
+    r.cars = r.cars.filter(c => !demoCar(c.id));
+    r.engines = (r.engines || []).filter(e => !demoEng(e.id) || r.cars.some(c => c.eng === e.id));
+    for (const t of Object.values(r.records)) for (const id of Object.keys(t)) if (demoCar(id)) delete t[id];
+    r.noDemo = 1;
+    try { localStorage.setItem(KEY, JSON.stringify(r)) } catch (e) { }
   }
   save() { try { localStorage.setItem(KEY, JSON.stringify(this.d)) } catch (e) { } }
   id(p) { return p + (this.d.nid++).toString(36) + Math.floor(Math.random() * 1296).toString(36) }

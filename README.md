@@ -42,12 +42,14 @@ Test locally: `python3 -m http.server` in this folder, then open `http://localho
 | Pause | Menu | Options |
 | Autopilot (cars with Self-driving L3) | D-pad down | D-pad down |
 
-Menus work with the D-pad or stick: A/✕ selects, B/○ goes back, LB/RB switch tabs. Every action can be remapped in Settings, which also shows live trigger and stick values, dead zones, steering linearity and vibration. Rumble includes trigger rumble for ABS and traction control on Xbox controllers in Chrome and Edge.
+Menus work with the D-pad or stick: A/✕ selects, B/○ goes back, LB/RB switch tabs. The pause menu has a volume slider (left/right on the D-pad), and B/○ there resumes the session. Every action can be remapped in Settings, which also shows live trigger and stick values, dead zones, steering linearity and vibration. Rumble includes trigger rumble for ABS and traction control on Xbox controllers in Chrome and Edge.
 
 **Keyboard**: arrows or WASD, E/Q shift, Space handbrake, C camera, R reset, B look back, L autopilot, Esc pause.
 **Phones and tablets**: steering pad, analog gas and brake pedals (press higher for more), gear buttons.
 
 ## How a design becomes a car
+
+The garage starts empty: design an engine, build a car around it, then pick a circuit. Or bring your designs over from the tycoon.
 
 - **Engine**: the tycoon's power, torque, redline and weight formulas build a torque curve (peaky DOHC, flat turbo plateau, low-revving diesel, high-revving rotary, constant-torque EV). Turbos have real lag that grows with boost and turbo count.
 - **Gearbox**: ratios are calculated from the engine's power band and the car's top speed. Manuals cut drive while shifting, automatics kick down, dual-clutch boxes shift in 50–80 ms, CVTs hold the power peak.
@@ -68,4 +70,4 @@ Menus work with the D-pad or stick: A/✕ selects, B/○ goes back, LB/RB switch
 
 ## Adding a circuit
 
-`tools/build_tracks.py` turns an OpenStreetMap trace and a terrain grid into a track file (smoothing, widths, start line, elevation, bridges, racing line). Clone the two data repositories next to it, run it, then `node tools/index_tracks.mjs`, and add the new file to `sw.js`. `cd tools && node test_laps.mjs spa pc1,pc4` drives autopilot laps to check a track.
+`tools/build_tracks.py` turns an OpenStreetMap trace and a terrain grid into a track file (smoothing, widths, start line, elevation, bridges, racing line). Clone the two data repositories next to it, run it, then `node tools/index_tracks.mjs`, and add the new file to `sw.js`. `cd tools && node test_laps.mjs spa pc1,pc4` drives autopilot laps with the sample cars in `tools/sample_cars.mjs` to check a track.

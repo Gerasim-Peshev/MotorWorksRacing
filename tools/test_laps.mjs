@@ -1,5 +1,6 @@
 import fs from 'fs';
 import * as P from '../js/parts.js';
+import * as S from './sample_cars.mjs';
 import { Track } from '../js/track.js';
 import { buildSpec, CarSim, DT } from '../js/physics.js';
 import { AutoPilot } from '../js/ai.js';
@@ -11,7 +12,7 @@ for (const tid of tracks) {
   const tr = new Track(JSON.parse(fs.readFileSync(`../tracks/${tid}.json`)));
   const tb = performance.now() - t0;
   for (const cid of cars) {
-    const c = P.PRESET_CARS.find(x => x.id === cid), e = P.PRESET_ENGINES.find(x => x.id === c.eng);
+    const c = S.PRESET_CARS.find(x => x.id === cid), e = S.PRESET_ENGINES.find(x => x.id === c.eng);
     const spec = buildSpec(c, e), sim = new CarSim(spec), ap = new AutoPilot(tr, spec);
     // start 150 m before the line
     const i0 = tr.wrap(-Math.round(150 / tr.ds));

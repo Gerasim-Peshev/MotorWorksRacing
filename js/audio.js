@@ -12,6 +12,17 @@ export function audioCtx() {
   return ctx;
 }
 export function setVolume(v) { if (master) master.gain.value = v }
+/* short rev blip straight to the master bus, so the volume can be judged while the car's own sound is muted (pause menu) */
+let lastBlip = 0;
+export function previewTone() {
+  const c = audioCtx(); if (!c || !master) return;
+  const t = c.currentTime; if (t - lastBlip < .14) return; lastBlip = t;
+  const o = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(92, t); o.frequency.exponentialRampToValueAtTime(165, t + .12); o.frequency.exponentialRampToValueAtTime(120, t + .24);
+  f.type = 'lowpass'; f.frequency.value = 1100; f.Q.value = 2;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.32, t + .02); g.gain.exponentialRampToValueAtTime(.001, t + .26);
+  o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + .28);
+}
 export function audioReady() { return ctx && ctx.state === 'running' }
 
 function noise(c) { const n = c.createBufferSource(); n.buffer = noiseBuf; n.loop = true; n.start(); return n }

@@ -166,7 +166,8 @@ export class MenuNav {
       if (el === cur) continue;
       const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
       const px = (x - cx) * dx + (y - cy) * dy; if (px <= 4) continue;
-      const ortho = Math.abs((x - cx) * dy) + Math.abs((y - cy) * dx);
+      // sideways distance to the element's edges (0 when it spans the current centre), so full-width rows such as sliders are reachable
+      const ortho = dy ? Math.max(0, r.left - cx, cx - r.right) : Math.max(0, r.top - cy, cy - r.bottom);
       const s = px + ortho * 2.2; if (s < bs) { bs = s; best = el }
     }
     if (best) { best.focus({ preventScroll: true }); best.scrollIntoView({ block: 'nearest', inline: 'nearest' }); this.mark(best) }

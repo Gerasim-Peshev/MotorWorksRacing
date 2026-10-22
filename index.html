@@ -252,6 +252,8 @@ html.driving,html.driving body{overflow:hidden;height:100%}
 .pause{position:absolute;inset:0;background:rgba(8,10,9,.72);display:grid;place-items:center;z-index:10;padding:16px;backdrop-filter:blur(3px)}
 .pause-in{background:var(--surface);color:var(--ink);border:2px solid var(--ink);border-radius:14px;max-width:620px;width:100%;padding:20px;display:flex;flex-direction:column;gap:12px;max-height:92vh;overflow:auto}
 .pause-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.pause-vol{grid-column:1/-1;padding:4px 2px 0}.pause-vol b{font-variant-numeric:tabular-nums}
+.card.empty{max-width:560px}.card.empty p{margin:0}
 .touch{position:absolute;inset:0;pointer-events:none}
 .touch>div{pointer-events:auto;position:absolute}
 .t-steer{left:max(14px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom));width:min(240px,34vw);height:min(120px,30vh);border-radius:16px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.25);display:grid;place-items:center}

@@ -5,7 +5,7 @@ import { World } from './scene.js';
 import { buildCar, disposeCar } from './carmodel.js';
 import { buildSpec, CarSim, DT } from './physics.js';
 import { AutoPilot } from './ai.js';
-import { CarAudio, audioCtx } from './audio.js';
+import { CarAudio, audioCtx, previewTone } from './audio.js';
 import { tx, fmtTime } from './i18n.js';
 
 let RENDERER = null;
@@ -428,7 +428,7 @@ export class DriveSession {
     const p = this.pauseEl, o = this.opts, sp = this.spec;
     const best = this.bestRef();
     const tog = (k, label, avail, val) => `<button class="btn ${val ? 'primary' : ''}" data-p="${k}" ${avail ? '' : 'disabled'}>${label}: ${avail ? (val ? tx('On') : tx('Off')) : tx('Not fitted')}</button>`;
-    const assistName = o.assist >= .7 ? tx('High') : o.assist > 0 ? tx('Low') : tx('Off');
+    const assistName = o.assist >= .7 ? tx('High') : o.assist > 0 ? tx('Low') : tx('Off'), vol = this.app.store.settings.volume;
     p.innerHTML = `<div class="pause-in"><small>${this.track.data.name}</small><h2>${tx('Paused')}</h2>
       <div class="dl"><div><small>${tx('Laps')}</small><b>${this.lapsDone.length}</b></div><div><small>${tx('Session best')}</small><b>${this.sessionBest ? fmtTime(this.sessionBest) : '–'}</b></div><div><small>${tx('Your record')}</small><b>${best ? fmtTime(best) : '–'}</b></div></div>
       <div class="pause-grid">
@@ -441,10 +441,12 @@ export class DriveSession {
         ${tog('abs', 'ABS', sp.abs, o.abs)}
         ${tog('esc', tx('Stability control'), sp.esc, o.esc)}
         ${this.canAuto ? `<button class="btn ${this.autopilot ? 'primary' : ''}" data-p="auto">${tx('Autopilot')}: ${this.autopilot ? tx('On') : tx('Off')}</button>` : ''}
+        <div class="field pause-vol"><div class="spread"><label class="lbl" for="p-vol">${tx('Volume')}</label><b id="p-vol-v">${Math.round(vol * 100)}%</b></div><input type="range" id="p-vol" min="0" max="1" step=".05" value="${vol}"></div>
         <button class="btn ghost" data-p="exit">${tx('Back to the garage')}</button>
       </div>
       <p class="muted small">${this.input.pad ? tx('Controller: menu button pauses, view button resets the car, Y/△ changes camera, B/○ and X/□ shift gears, A/✕ handbrake.') : tx('Keyboard: arrows or WASD drive, E/Q shift, Space handbrake, C camera, R reset, Esc pause.')}</p></div>`;
     p.onclick = e => { const b = e.target.closest('[data-p]'); if (b) this.pauseAct(b.dataset.p) };
+    p.oninput = e => { if (e.target.id !== 'p-vol') return; const v = +e.target.value; this.app.saveSetting('volume', v); p.querySelector('#p-vol-v').textContent = Math.round(v * 100) + '%'; previewTone() };
   }
   pauseAct(a) {
     const o = this.opts;
